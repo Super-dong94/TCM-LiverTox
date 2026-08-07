@@ -1,0 +1,23 @@
+{
+  "schema_version": "1",
+  "calibration_status": "embedded",
+  "calibration_version": "model_bundle_artifact_v1",
+  "models": [
+    {
+      "name": "cell",
+      "file_name": "01best_model_tuned.joblib",
+      "status": "embedded"
+    },
+    {
+      "name": "animal",
+      "file_name": "02best_model_tuned.joblib",
+      "status": "embedded"
+    },
+    {
+      "name": "clinical",
+      "file_name": "03best_model_tuned.joblib",
+      "status": "embedded"
+    }
+  ],
+  "note": "Each model bundle contains its fitted calibrator and endpoint-specific decision threshold."
+}

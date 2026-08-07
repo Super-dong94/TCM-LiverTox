@@ -1,0 +1,39 @@
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node dependencies and Playwright artifacts
+node_modules/
+test-results/
+playwright-report/
+
+# ToxHERB runtime state and generated outputs
+.toxherb_user/
+prediction_outputs/
+**/toxicity_prediction_outputs/
+test_outputs/
+work/
+
+# Build products
+build/
+dist/
+*.spec
+
+# Local configuration, secrets, and temporary files
+.env
+.env.*
+!.env.example
+*.tmp.sqlite
+*.pid
+*.log
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
