@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -205,6 +205,19 @@ def get_job_section(
         order=order,
         keyword=keyword,
     )
+
+
+@app.get("/api/jobs/{job_id}/export", dependencies=[Depends(require_api_access)])
+def export_job(job_id: str) -> StreamingResponse:
+    return StreamingResponse(job_manager.export_csv(job_id), media_type="text/csv; charset=utf-8",
+                             headers={"Content-Disposition": f'attachment; filename="ToxHERB_{job_id}_all.csv"'})
+
+
+@app.get("/api/jobs/{job_id}/sections/{section}/export", dependencies=[Depends(require_api_access)])
+def export_job_section(job_id: str, section: str) -> StreamingResponse:
+    stream = job_manager.export_csv(job_id, section)
+    return StreamingResponse(stream, media_type="text/csv; charset=utf-8",
+                             headers={"Content-Disposition": f'attachment; filename="ToxHERB_{job_id}_section.csv"'})
 
 
 @app.get("/api/visual/database", dependencies=[Depends(require_api_access)])

@@ -55,7 +55,7 @@ def main() -> None:
                 "file_name": path.name,
                 "category": category_for(path),
                 "source": "local",
-                "schema_version": "1",
+                "schema_version": "2",
                 "hash": quick_hash(path),
                 "hash_mode": "sha256_name_size_mtime_head_tail",
                 "size_bytes": stat.st_size,
@@ -69,11 +69,14 @@ def main() -> None:
         json.dumps([(item["file_name"], item["hash"]) for item in files], ensure_ascii=False).encode("utf-8")
     ).hexdigest()
     manifest = {
-        "schema_version": "1",
+        "schema_version": "2",
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "hash": overall,
         "hash_mode": "sha256_of_file_hashes",
+        "method_version": "manuscript-20260922",
+        "blood_exposure_rule": "Reference_Match OR Bioavailability_Ma >= 0.3",
+        "endpoint_thresholds": {"cell": 0.55, "animal": 0.96, "clinical": 0.64},
         "files": files,
     }
     MANIFEST.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")

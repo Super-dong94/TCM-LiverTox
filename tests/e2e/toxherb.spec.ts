@@ -1,13 +1,19 @@
 import { expect, test } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 
 const baseURL = process.env.TOXHERB_E2E_URL || 'http://127.0.0.1:7860';
 
 test('home database visuals and responsive layout', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(baseURL);
   await expect(page.locator('#homeView')).toBeVisible();
   await expect(page.locator('#homeTitle')).toContainText('中药肝毒性多层级');
   await expect(page.locator('#stat-compounds')).not.toHaveText('--', { timeout: 30000 });
   await expect(page.locator('#databaseVisualPanel')).toBeVisible({ timeout: 30000 });
+  const left = await page.locator('.database-main-chart').boundingBox();
+  const right = await page.locator('.database-class-chart').boundingBox();
+  expect(Math.abs(left!.y - right!.y)).toBeLessThan(2);
+  expect(right!.x).toBeGreaterThan(left!.x);
   await page.click('#langEnBtn');
   await expect(page.locator('#homeTitle')).toContainText('ToxHerb: A Multilevel');
   await expect(page.locator('#currentTimeLabel')).toHaveText('Current Time');
@@ -20,6 +26,12 @@ test('home database visuals and responsive layout', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const bodyBox = await page.locator('body').boundingBox();
   expect(bodyBox?.width).toBeLessThanOrEqual(390);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await expect.poll(() => page.evaluate(() => {
+    const left = document.querySelector('.database-main-chart')!.getBoundingClientRect();
+    const right = document.querySelector('.database-class-chart')!.getBoundingClientRect();
+    return right.top - left.bottom;
+  })).toBeGreaterThanOrEqual(0);
 });
 
 test('knowledge search renders charts without javascript errors', async ({ page }) => {
@@ -437,4 +449,96 @@ test('multi-herb toxicity networks keep separate herb root nodes', async ({ page
     expect.objectContaining({ source: '红花', target: 'shared marker' }),
     expect.objectContaining({ source: '黄芪', target: 'shared marker' }),
   ]));
+});
+
+
+test('SCI summary uses actual metadata, complete statistics and unevaluated state', async ({ page }) => {
+  await page.goto(baseURL);
+  await page.evaluate(() => {
+    const app = window as any;
+    app.showPlatformView();
+    const stats = {
+      endpoint_counts: [{ endpoint: 'cell', positive: 7, negative: 2 }, { endpoint: 'animal', positive: 9, negative: 0 }, { endpoint: 'clinical', positive: 8, negative: 1 }],
+      combination_counts: ['none', 'clinical', 'animal', 'animal+clinical', 'cell', 'cell+clinical', 'cell+animal', 'cell+animal+clinical'].map((name, i) => ({ name, count: i === 3 ? 2 : i === 6 ? 1 : i === 7 ? 6 : 0 })),
+      score_counts: [0, 1, 2, 3].map(score => ({ score, count: score === 2 ? 3 : score === 3 ? 6 : 0 })),
+      pmax_source_counts: [{ name: 'cell', count: 0 }, { name: 'animal', count: 9 }, { name: 'clinical', count: 0 }, { name: 'tied', count: 0 }]
+    };
+    app.generateReport('Nine compounds', 'compound', true, {
+      summary: { risk_label: '筛查完成', total_compounds: 9, evaluated_count: 9, candidate_count: 9, not_evaluated_count: 0, reference_match_count: 4, admet_pass_count: 5, max_toxic_probability: .9932842977848624, method_version: 'manuscript-20260922', pmax_contributors: [{ CID: 3220, name: 'Emodin', endpoints: ['animal'] }] },
+      probabilities: { cell: .87, animal: .9932842977848624, clinical: .85 },
+      model_metadata: { cell: { name: 'Stacking', threshold: .55, calibration_method: 'none' }, animal: { name: 'BalancedRandomForest', threshold: .96, calibration_method: 'sigmoid' }, clinical: { name: 'RandomForest', threshold: .64, calibration_method: 'none' } },
+      prediction_statistics: stats, compounds: [], high_risk_compounds: [], target_counts: [], pathway_counts: [], go_counts: [], disease_counts: []
+    });
+  });
+  await expect(page.locator('#toxVerdictLabel')).toHaveText('筛查摘要');
+  await expect(page.locator('#metaCell')).toContainText('Stacking');
+  await expect(page.locator('#metaCell')).toContainText('无额外校准');
+  await expect(page.locator('#metaMouse')).toContainText('0.96');
+  await expect(page.locator('#metaMouse')).toContainText('sigmoid');
+  await expect(page.locator('#tableContent')).toContainText('Emodin');
+  await expect(page.locator('#tableContent')).not.toContainText('暴露加权');
+  await page.click('#langEnBtn');
+  await expect(page.locator('#toxVerdictLabel')).toHaveText('Screening Summary');
+  await expect(page.locator('#metaCell')).toContainText('No additional calibration');
+  await page.locator('#reportSubTabs .report-sub-tab', { hasText: 'Toxicity Analysis Overview' }).click();
+  const data = await page.locator('[id$="endpoint_combinations"]').evaluate(el => (window as any).echarts.getInstanceByDom(el).getOption().series[0].data);
+  expect(data).toHaveLength(8);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.evaluate(() => (window as any).generateReport('No evaluable ingredients', 'herb', true, {
+    summary: { risk_label: '无法评估', evaluated_count: 0, candidate_count: 0, not_evaluated_count: 1, max_toxic_probability: null },
+    probabilities: { cell: null, animal: null, clinical: null }, compounds: [], high_risk_compounds: []
+  }));
+  await expect(page.locator('#toxVerdict')).toHaveText('Not Evaluable');
+  await expect(page.locator('#toxProb')).toHaveText('-- %');
+  await expect(page.locator('#probCell')).toHaveText('-- %');
+  const empty = await page.locator('[id$="risk_model_bar"]').evaluate(el => (window as any).echarts.getInstanceByDom(el).getOption().series[0].data);
+  expect(empty.map((row: any) => row.value)).toEqual([null, null, null]);
+});
+
+test('full result pagination and CSV download go beyond the preview', async ({ page }) => {
+  const csv = 'CID,Max_Tox_Prob\r\n' + Array.from({ length: 1501 }, (_, i) => `${i},0.9`).join('\r\n');
+  await page.route('**/api/jobs/export-check/sections/toxic_compounds?*', route => {
+    const url = new URL(route.request().url());
+    const size = Number(url.searchParams.get('page_size'));
+    const start = (Number(url.searchParams.get('page')) - 1) * size;
+    return route.fulfill({ json: { section: { row_count: 1501 }, headers: ['CID', 'Max_Tox_Prob'], rows: Array.from({ length: Math.min(size, 1501 - start) }, (_, i) => [start + i, .9]) } });
+  });
+  await page.route('**/api/jobs/export-check/export', route => route.fulfill({ contentType: 'text/csv', body: csv }));
+  await page.route('**/api/jobs/export-check/sections/toxic_compounds/export', route => route.fulfill({ contentType: 'text/csv', body: csv }));
+  await page.goto(baseURL);
+  await page.evaluate(() => {
+    const app = window as any;
+    app.showPlatformView();
+    app.generateReport('Fixture', 'herb', true, {
+      job_id: 'export-check', summary: { risk_label: '筛查完成' }, probabilities: {},
+      sections: [{ id: 'toxic_compounds', source_file: 'compounds.csv', row_count: 1501, page_api: '/api/jobs/export-check/sections/toxic_compounds', export_api: '/api/jobs/export-check/sections/toxic_compounds/export' }],
+      csv_sections: { toxic_compounds: [{ title: '候选成分', source_file: 'compounds.csv', headers: ['CID', 'Max_Tox_Prob'], rows: Array.from({ length: 1000 }, (_, i) => [i, .9]), truncated: true }] }
+    });
+  });
+  await page.locator('#reportSubTabs .report-sub-tab', { hasText: '毒性成分明细' }).click();
+  await expect(page.locator('#tableContent .section-page-label')).toContainText('1 / 76');
+  await page.evaluate(() => (window as any).changeSectionPage(0, 50));
+  await expect(page.locator('#tableContent tbody tr').first()).toContainText('1000');
+  await expect(page.locator('#tableContent .section-page-label')).toContainText('51 / 76');
+  for (const selector of ['#tableContent .section-export-btn', '#exportBtn']) {
+    const download = page.waitForEvent('download');
+    await page.click(selector);
+    const path = await (await download).path();
+    const text = await readFile(path!, 'utf8');
+    expect(text.trim().split(/\r?\n/)).toHaveLength(1502);
+    expect(text).toContain('1500,0.9');
+  }
+});
+
+test('job cancellation remains available', async ({ page }) => {
+  await page.route('**/api/jobs/cancel-check/cancel', route => route.fulfill({ json: { job_id: 'cancel-check', status: 'cancelled', stage: 'cancelled', progress: 100, message: '任务已取消。' } }));
+  await page.goto(baseURL);
+  await page.evaluate(() => {
+    (window as any).showPlatformView();
+    document.getElementById('loadingOverlay')!.style.display = 'flex';
+    (window as any).updateJobProgress({ job_id: 'cancel-check', status: 'running', stage: 'livertox_prediction', progress: 50 });
+  });
+  await page.click('#cancelJobBtn');
+  await expect(page.locator('#jobProgressMessage')).toHaveText('任务已取消。');
 });

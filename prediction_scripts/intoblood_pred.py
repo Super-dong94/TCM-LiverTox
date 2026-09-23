@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import pandas as pd
+from rdkit import Chem
 
 
 IDENTIFIER_COLUMNS = ("CID", "ChemicalName", "Smiles")
@@ -11,6 +12,7 @@ REFERENCE_OUTPUT_COLUMNS = (
     "Reference_Match",
     "IntoBlood",
     "IntoBlood_Reason",
+    "Precomputed_Match",
 )
 
 
@@ -30,13 +32,35 @@ def _match_key(column: str, value: Any) -> str | None:
     return text
 
 
+def assess_blood_exposure(df: pd.DataFrame) -> pd.DataFrame:
+    """实测匹配优先；预计算 ADMET >= 0.3，缺失与阴性分别保留。"""
+    out = df.copy()
+    ref = out.get("Reference_Match", pd.Series(False, index=out.index))
+    out["Reference_Match"] = ref.fillna(False).astype(str).str.lower().isin(["true", "1", "1.0"])
+    out["Bioavailability_Ma"] = pd.to_numeric(out.get("Bioavailability_Ma", pd.Series(float("nan"), index=out.index)), errors="coerce")
+    ob = out["Bioavailability_Ma"].where(out["Bioavailability_Ma"].between(0, 1))
+    out["Bioavailability_Ma"] = ob
+    ref = out["Reference_Match"]
+    out["IntoBlood"] = pd.Series(pd.NA, index=out.index, dtype="Int64")
+    out["IntoBlood_Reason"] = "missing_admet"
+    out.loc[~ref & ob.notna(), "IntoBlood"] = ob[~ref & ob.notna()].ge(0.3).astype(int)
+    out.loc[~ref & ob.ge(0.3), "IntoBlood_Reason"] = "admet_ge_0.3"
+    out.loc[~ref & ob.lt(0.3), "IntoBlood_Reason"] = "admet_below_0.3"
+    out.loc[ref, ["IntoBlood", "IntoBlood_Reason"]] = [1, "reference_match"]
+    if "Smiles" in out:
+        valid = out["Smiles"].map(lambda value: isinstance(value, str) and bool(value.strip()) and Chem.MolFromSmiles(value) is not None)
+        out.loc[~valid, "IntoBlood"] = pd.NA
+        out.loc[~valid, "IntoBlood_Reason"] = "invalid_structure"
+    return out
+
+
 def match_intoblood_reference(
     query_df: pd.DataFrame,
     reference_df: pd.DataFrame,
     *,
     verbose: bool = False,
 ) -> pd.DataFrame:
-    """Match compounds by CID, ChemicalName, or Smiles and copy reference flags."""
+    """匹配预计算数据；Reference_Match 仅表示原实测参考库命中。"""
     if "IntoBlood" not in reference_df.columns:
         raise ValueError("入血参考库缺少 IntoBlood 列。")
 
@@ -59,6 +83,7 @@ def match_intoblood_reference(
         lookups[column] = lookup
 
     output = query_df.reset_index(drop=True).copy()
+    output["Precomputed_Match"] = False
     output["Bioavailability_Ma"] = pd.NA
     output["Reference_Match"] = False
     output["IntoBlood"] = 0
@@ -79,11 +104,9 @@ def match_intoblood_reference(
         for column in REFERENCE_OUTPUT_COLUMNS:
             if column in reference.columns:
                 output.at[output_index, column] = reference_row[column]
+        output.at[output_index, "Precomputed_Match"] = True
 
-    output["Bioavailability_Ma"] = pd.to_numeric(output["Bioavailability_Ma"], errors="coerce")
-    output["Reference_Match"] = output["Reference_Match"].fillna(False).astype(bool)
-    output["IntoBlood"] = pd.to_numeric(output["IntoBlood"], errors="coerce").fillna(0).astype(int)
-    output["IntoBlood_Reason"] = output["IntoBlood_Reason"].fillna("not_in_reference").astype(str)
+    output = assess_blood_exposure(output)
 
     if verbose:
         print(f"入血参考库精确匹配完成：{matched}/{len(output)} 个化合物命中。")

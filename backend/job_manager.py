@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+import io
 import json
 import shutil
 import threading
@@ -11,7 +13,7 @@ from typing import Any, Callable
 
 from .config import Settings
 from .job_store import JobStore
-from .predictor import HepatotoxicityPredictor, PredictionError, split_items
+from .predictor import HepatotoxicityPredictor, PredictionError, split_items, PREDICTION_RESPONSE_SCHEMA_VERSION
 
 
 ProgressCallback = Callable[[str, int, str], None]
@@ -109,7 +111,15 @@ class JobManager:
         result_path = job.get("result_json_path")
         if not result_path or not Path(result_path).exists():
             raise PredictionError("任务结果文件不存在。", status_code=500)
-        return json.loads(Path(result_path).read_text(encoding="utf-8"))
+        result = json.loads(Path(result_path).read_text(encoding="utf-8"))
+        result["job_id"] = job_id
+        result["legacy_result"] = result.get("response_schema_version") != PREDICTION_RESPONSE_SCHEMA_VERSION
+        if result["legacy_result"]:
+            result.setdefault("warnings", []).append("历史结果采用旧版口径，请重新预测以使用 2026-09-22 方法。")
+        for section in result.get("sections", []):
+            section["page_api"] = f"/api/jobs/{job_id}/sections/{section['id']}"
+            section["export_api"] = f"/api/jobs/{job_id}/sections/{section['id']}/export"
+        return result
 
     def get_section_page(
         self,
@@ -141,6 +151,49 @@ class JobManager:
             keyword=keyword,
             job_id=job_id,
         )
+
+    def export_csv(self, job_id: str, section: str | None = None):
+        result = self.get_result(job_id)
+        job = self.store.get_job(job_id)
+        mapping = self.predictor._section_file_map(job["query_type"])
+        if section is not None and section not in mapping:
+            raise PredictionError("未知结果分区。", status_code=404)
+        selected = [section] if section else list(mapping)
+        paths = [(key, Path(job["output_dir"]) / mapping[key][1]) for key in selected]
+        if any(not path.is_file() for _, path in paths):
+            raise PredictionError("完整结果文件缺失，无法导出。", status_code=404)
+        meta = {
+            "Export_Section": "", "Response_Version": result.get("response_schema_version", "legacy"),
+            "Method_Version": result.get("summary", {}).get("method_version", "legacy"),
+            "Export_Count_Basis": "CID; standardized SMILES if CID missing; targets: unique compounds; GO/pathways: unique targets; diseases: unique compounds; Raw_Record_Count: source records",
+        }
+        thresholds = result.get("summary", {}).get("endpoint_thresholds", {})
+        for endpoint in ("cell", "animal", "clinical"):
+            meta[endpoint.title() + "_Threshold"] = thresholds.get(endpoint, "")
+        headers = list(meta)
+        for _, path in paths:
+            with path.open(encoding="utf-8-sig", newline="") as handle:
+                for column in next(csv.reader(handle), []):
+                    if column not in headers:
+                        headers.append(column)
+
+        def stream():
+            buffer = io.StringIO(newline="")
+            writer = csv.DictWriter(buffer, fieldnames=headers, extrasaction="ignore")
+            writer.writeheader()
+            yield "\ufeff" + buffer.getvalue()
+            buffer.seek(0); buffer.truncate(0)
+            for key, path in paths:
+                with path.open(encoding="utf-8-sig", newline="") as handle:
+                    for index, row in enumerate(csv.DictReader(handle)):
+                        writer.writerow({**row, **meta, "Export_Section": key})
+                        if index % 500 == 499:
+                            yield buffer.getvalue()
+                            buffer.seek(0); buffer.truncate(0)
+                if buffer.tell():
+                    yield buffer.getvalue()
+                    buffer.seek(0); buffer.truncate(0)
+        return stream()
 
     def _run_prediction_job(
         self,

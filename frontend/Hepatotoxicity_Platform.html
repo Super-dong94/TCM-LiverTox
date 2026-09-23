@@ -616,7 +616,7 @@
         .chart-grid, .database-chart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
         .report-chart-grid { padding: 12px; }
         .report-chart-section .chart-card { box-shadow: none; }
-        .chart-card { border: 1px solid var(--border-tech); background: var(--panel-color); border-radius: 6px; padding: 12px; min-height: 320px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 8px 20px rgba(31, 41, 51, 0.05); }
+        .chart-card { min-width: 0; border: 1px solid var(--border-tech); background: var(--panel-color); border-radius: 6px; padding: 12px; min-height: 320px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 8px 20px rgba(31, 41, 51, 0.05); }
         .chart-grid.trace-compound-class-layout { grid-template-columns: repeat(3, minmax(0, 1fr)); }
         .chart-grid.toxicity-overview-network-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
         .chart-grid.toxicity-overview-stat-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -643,9 +643,8 @@
         .database-chart-grid .chart-card-desc { color: #6f7785; text-align: center; }
         .database-chart-grid .chart-card-header { justify-content: center; }
         .database-chart-grid .chart-canvas { height: 320px; min-height: 320px; }
-        .database-chart-grid .database-main-chart { grid-column: 1 / -1; min-height: 500px; }
+        .database-chart-grid .database-main-chart { min-height: 500px; }
         .database-chart-grid .database-main-chart .chart-canvas { height: 430px; min-height: 430px; }
-        .database-chart-grid .database-class-chart,
         .database-chart-grid .database-source-chart { grid-column: 1 / -1; }
         .database-chart-grid .database-class-chart { min-height: 440px; }
         .database-chart-grid .database-class-chart .chart-canvas { height: 360px; min-height: 360px; }
@@ -793,20 +792,20 @@
             .header { padding: 12px 16px; flex-direction: column; }
             .sys-status { margin-left: 0; justify-content: flex-start; }
             .home-view, .container { width: calc(100% - 24px); margin: 14px auto; }
-            .home-footer-grid { grid-template-columns: 1fr; }
+            .home-footer-grid { grid-template-columns: minmax(0, 1fr); }
             .home-title { font-size: 28px; white-space: normal; }
             .home-summary { font-size: 14px; }
-            .home-search-form { grid-template-columns: 1fr; }
+            .home-search-form { grid-template-columns: minmax(0, 1fr); }
             .database-section { min-height: auto; }
             .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
             .stat-card { min-height: 150px; }
             .tech-panel { padding: 22px 16px; }
-            .report-context-bar { grid-template-columns: 1fr; }
+            .report-context-bar { grid-template-columns: minmax(0, 1fr); }
             .report-group-tab {min-width: 0; }
             .report-sub-tab { min-width: 0; }
-            .chart-grid, .database-chart-grid { grid-template-columns: 1fr; }
+            .chart-grid, .database-chart-grid { grid-template-columns: minmax(0, 1fr); }
             .chart-grid.toxicity-overview-network-grid,
-            .chart-grid.toxicity-overview-stat-grid { grid-template-columns: 1fr; }
+            .chart-grid.toxicity-overview-stat-grid { grid-template-columns: minmax(0, 1fr); }
             .chart-card, .chart-card.wide-chart, .chart-card.network-chart { grid-column: 1; min-height: 300px; }
             .chart-grid.toxicity-overview-network-grid .chart-card.network-chart { grid-column: 1; min-height: 300px; }
             .chart-canvas { height: 300px; min-height: 280px; }
@@ -827,7 +826,7 @@
         }
 
         @media (max-width: 460px) {
-            .stats-grid { grid-template-columns: 1fr; }
+            .stats-grid { grid-template-columns: minmax(0, 1fr); }
             .home-title { font-size: 24px; white-space: normal; }
             .alert-matrix { padding: 18px; flex-direction: column; align-items: flex-start; gap: 16px; }
             .alert-status { font-size: 26px; }
@@ -970,14 +969,14 @@
         <section class="home-footer-grid">
             <div class="home-footer-panel">
                 <div id="homeTeamTitle" class="home-section-title">平台版权与开发团队</div>
-                <p><strong id="homeChiefArchitectLabel">首席架构师:</strong> 许栋</p>
+                <p><strong id="homeChiefArchitectLabel">首席架构师:</strong> <span id="homeChiefArchitectValue">许栋</span></p>
                 <p><strong id="homeInstitutionLabel">依托单位:</strong> <span id="homeInstitutionValue">中国人民解放军空军军医大学</span></p>
                 <p><strong id="homeModelVersionLabel">内核模型版本:</strong> TCM-LiverTox v1.0</p>
                 <p><strong id="homeSupportEmailLabel">技术支持邮箱:</strong> dongxu418@163.com</p>
             </div>
             <div class="home-footer-panel">
                 <div id="homeCitationTitle" class="home-section-title">推荐学术引用</div>
-                <p>Dong Xu, Chen Cui, Kai Gao, et al. Integrative Ensemble Learning Framework with Dynamic Algorithm Weighting for Precision Prediction of Chemical-Induced Hepatotoxicity[J]. <i>Nucleic Acids Research</i>, 2026, 123(4), 567-589. (Under Review)</p>
+                <p>Dong Xu, Chen Cui, Kai Gao, et al. TCM-LiverTox: a multi-level, multi-dimensional and integrated hepatotoxicity prediction framework for traditional Chinese medicine [J]. 2026.</p>
             </div>
         </section>
     </main>
@@ -1047,13 +1046,13 @@
                         <span id="sidebarTeamTitle">平台版权与开发团队</span>
                     </div>
                     <div class="author-content">
-                        <p><strong id="sidebarChiefArchitectLabel">首席架构师:</strong> 许栋</p>
+                        <p><strong id="sidebarChiefArchitectLabel">首席架构师:</strong> <span id="sidebarChiefArchitectValue">许栋</span></p>
                         <p><strong id="sidebarInstitutionLabel">依托单位:</strong> <span id="sidebarInstitutionValue">中国人民解放军空军军医大学</span></p>
                         <p><strong id="sidebarModelVersionLabel">内核模型版本:</strong> TCM-LiverTox v1.0</p>
                         <p><strong id="sidebarSupportEmailLabel">技术支持邮箱:</strong> dongxu418@163.com</p>
                         <div class="citation">
                             <span id="sidebarCitationTitle">[ 推荐学术引用 ]</span>
-                            Dong Xu, Chen Cui, Kai Gao, et al. Integrative Ensemble Learning Framework with Dynamic Algorithm Weighting for Precision Prediction of Chemical-Induced Hepatotoxicity[J].<i>Nucleic Acids Research</i>, 2026, 123(4), 567-589. (Under Review)
+                            Dong Xu, Chen Cui, Kai Gao, et al. TCM-LiverTox: a multi-level, multi-dimensional and integrated hepatotoxicity prediction framework for traditional Chinese medicine [J]. 2026.
                         </div>
                     </div>
                 </div>
@@ -1113,11 +1112,11 @@
             <!-- 预测模式独占：毒性报警横幅 -->
             <div id="alertBanner" class="alert-matrix">
                 <div>
-                    <div id="toxProbLabel" style="font-size: 14px; color: var(--text-sub); margin-bottom: 5px; font-weight:bold;">综合毒性概率预测</div>
+                    <div id="toxProbLabel" style="font-size: 14px; color: var(--text-sub); margin-bottom: 5px; font-weight:bold;">Pmax（成分集合最大值）</div>
                     <div id="toxProb" class="alert-status glow-cyan">-- %</div>
                 </div>
                 <div style="text-align: right;">
-                    <div id="toxVerdictLabel" style="font-size: 14px; color: var(--text-sub); margin-bottom: 5px; font-weight:bold;">系统安全裁定</div>
+                    <div id="toxVerdictLabel" style="font-size: 14px; color: var(--text-sub); margin-bottom: 5px; font-weight:bold;">筛查摘要</div>
                     <div id="toxVerdict" class="alert-status glow-cyan">待机中</div>
                 </div>
             </div>
@@ -1132,6 +1131,7 @@
                     </div>
                     <div id="cellModelLabel" class="model-name">细胞水平 (In Vitro)</div>
                     <div id="probCell" class="model-prob glow-cyan">-- %</div>
+                    <div id="metaCell" class="chart-card-desc"></div>
                 </div>
                 <div class="model-card">
                     <div class="model-logo glow-cyan" id="logoMouse">
@@ -1141,6 +1141,7 @@
                     </div>
                     <div id="mouseModelLabel" class="model-name">小鼠活体 (In Vivo)</div>
                     <div id="probMouse" class="model-prob glow-cyan">-- %</div>
+                    <div id="metaMouse" class="chart-card-desc"></div>
                 </div>
                 <div class="model-card">
                     <div class="model-logo glow-cyan" id="logoHuman">
@@ -1150,6 +1151,7 @@
                     </div>
                     <div id="humanModelLabel" class="model-name">人体临床 (Human)</div>
                     <div id="probHuman" class="model-prob glow-cyan">-- %</div>
+                    <div id="metaHuman" class="chart-card-desc"></div>
                 </div>
             </div>
 
@@ -1200,6 +1202,7 @@
                 databaseInfoTitle: '数据库信息',
                 teamTitle: '平台版权与开发团队',
                 chiefArchitect: '首席架构师:',
+                chiefArchitectValue: '许栋',
                 institution: '依托单位:',
                 institutionValue: '中国人民解放军空军军医大学',
                 modelVersion: '内核模型版本:',
@@ -1218,8 +1221,8 @@
                 waitingInput: '等待输入',
                 standby: '待机',
                 idleVerdict: '待机中',
-                toxProbability: '综合毒性概率预测',
-                systemVerdict: '系统安全裁定',
+                toxProbability: 'Pmax（成分集合最大值）',
+                systemVerdict: '筛查摘要',
                 cellModelCard: '细胞水平 (In Vitro)',
                 mouseModelCard: '小鼠活体 (In Vivo)',
                 humanModelCard: '人体临床 (Human)',
@@ -1310,6 +1313,7 @@
                 databaseInfoTitle: 'Database Overview',
                 teamTitle: 'Copyright and Development Team',
                 chiefArchitect: 'Chief Architect:',
+                chiefArchitectValue: 'Dong Xu',
                 institution: 'Affiliated Institution:',
                 institutionValue: 'Air Force Medical University',
                 modelVersion: 'Core Model Version:',
@@ -1328,8 +1332,8 @@
                 waitingInput: 'Waiting for input',
                 standby: 'Standby',
                 idleVerdict: 'Standby',
-                toxProbability: 'Integrated Toxicity Probability Prediction',
-                systemVerdict: 'System Safety Assessment',
+                toxProbability: 'Pmax (Maximum Across Ingredients)',
+                systemVerdict: 'Screening Summary',
                 cellModelCard: 'In Vitro Model',
                 mouseModelCard: 'In Vivo Animal Model',
                 humanModelCard: 'Human Clinical Model',
@@ -1409,6 +1413,69 @@
         };
 
         const PHRASE_I18N = {
+            "筛查摘要": "Screening Summary",
+            "筛查状态": "Screening Status",
+            "筛查完成": "Screening Completed",
+            "部分完成": "Partially Evaluated",
+            "无法评估": "Not Evaluable",
+            "历史结果（旧版口径）": "Historical Result (Previous Method)",
+            "Pmax（成分集合最大值）": "Pmax (Maximum Across Ingredients)",
+            "Pmax 来源成分与端点": "Pmax Contributor and Endpoint",
+            "并列最大值全部保留": "All tied maxima are retained",
+            "已评估成分数": "Evaluated Ingredients",
+            "阳性候选成分数": "Positive Candidate Ingredients",
+            "未评估成分数": "Unevaluated Ingredients",
+            "实测参考库命中数": "Experimental Reference Matches",
+            "ADMET 预测通过数": "ADMET Pass Count",
+            "低于入血阈值": "Below Exposure Threshold",
+            "数据不足": "Insufficient Data",
+            "端点阳性阈值": "Endpoint Thresholds",
+            "计数口径": "Counting Basis",
+            "关联解释": "Association Interpretation",
+            "方法版本": "Method Version",
+            "所有已评估成分、所有端点中的最大模型输出；不是临床发生率。": "Maximum model output across all evaluated ingredients and endpoints; not clinical incidence.",
+            "通过入血筛选且结构有效": "Passed exposure screening with a valid structure",
+            "至少一个端点阳性；按 Pmax 降序": "At least one positive endpoint; ranked by descending Pmax",
+            "包括未通过入血筛选及数据不足": "Includes exposure exclusions and insufficient data",
+            "实测命中直接通过，不要求 ADMET 值": "Experimental matches pass without an ADMET value",
+            "其余成分 Bioavailability_Ma ≥ 0.3；预计算命中不等于实测证据": "Other ingredients require Bioavailability_Ma ≥ 0.3; a cached record is not experimental evidence",
+            "保留记录，不进入毒性预测": "Record retained; no toxicity prediction",
+            "无效结构或缺少 ADMET 数据": "Invalid structure or missing ADMET data",
+            "按未四舍五入的概率判定；0–3 分为阳性端点数": "Thresholds apply to unrounded probabilities; score 0–3 counts positive endpoints",
+            "唯一成分：CID 优先，缺失时采用标准化结构": "Unique ingredients: CID first, standardized structure when CID is missing",
+            "靶标按唯一成分；GO/通路按唯一靶标；疾病按唯一成分，另列原始记录频次": "Targets: unique ingredients; GO/pathways: unique targets; diseases: unique ingredients, with raw record frequency separately",
+            "数据库关联不代表因果证据或新计算的显著性富集": "Database associations are neither causal evidence nor newly calculated significant enrichment",
+            "图谱仅展示关系预览；统计与 CSV 使用完整结果": "Networks show association previews; statistics and CSV use complete results",
+            "入血筛选流程（唯一成分数）": "Exposure Screening (Unique Ingredients)",
+            "三端点阳性 / 阴性（唯一成分数）": "Endpoint Positive / Negative Counts (Unique Ingredients)",
+            "八种端点组合（唯一成分数）": "Eight Endpoint Combinations (Unique Ingredients)",
+            "0–3 分分布（唯一成分数）": "Score 0–3 Distribution (Unique Ingredients)",
+            "Pmax 来源（唯一成分数）": "Pmax Sources (Unique Ingredients)",
+            "疾病关联（唯一成分数）": "Disease Associations (Unique Ingredients)",
+            "靶标统计（唯一成分数）": "Target Associations (Unique Ingredients)",
+            "信号通路统计（唯一靶标数）": "Pathway Associations (Unique Targets)",
+            "GO术语统计（唯一靶标数）": "GO Associations (Unique Targets)",
+            "按完整结果中的唯一成分计数；未评估成分不计入端点阴性。": "Counts use unique ingredients in the complete results; unevaluated ingredients are not endpoint negatives.",
+            "成分集合中各端点的最大模型输出；校准方式见模型卡片。": "Maximum output per endpoint across ingredients; model cards show actual calibration.",
+            "三端点最大概率": "Maximum Probability per Endpoint",
+            "总成分": "Total Ingredients",
+            "实测匹配": "Experimental Match",
+            "ADMET通过": "ADMET Pass",
+            "已评估": "Evaluated",
+            "综合分数": "Score 0–3",
+            "阳性端点": "Positive Endpoints",
+            "端点组合": "Endpoint Combination",
+            "Pmax 来源": "Pmax Source",
+            "预计算匹配": "Precomputed Match",
+            "筛选原因": "Screening Reason",
+            "评估状态": "Assessment Status",
+            "标准化结构": "Standardized SMILES",
+            "完整结果不可用，请重新运行预测。": "Full results are unavailable. Run the prediction again.",
+            "完整 CSV 导出失败": "Full CSV export failed",
+            "Pmax 为成分集合中的最大模型输出，0–3 分表示阳性端点数量；均不代表临床肝损伤发生率或安全性结论。": "Pmax is the maximum model output across ingredients; score 0–3 counts positive endpoints. Neither represents clinical liver injury incidence or a safety verdict.",
+            "阳性候选成分明细": "Positive Candidate Ingredient Details",
+            "未检出超过阈值的阳性候选成分": "No positive candidate ingredients",
+            "候选成分 Pmax TOP": "Top Candidate Ingredients by Pmax",
             '当前时间': 'Current Time',
             '加载中': 'Loading',
             '暗黑模式': 'Dark Mode',
@@ -1523,7 +1590,7 @@
             '未知成分': 'Unknown Ingredient',
             '已命中': 'Matched',
             '未命中': 'Not Matched',
-            '未检出超过阈值的高危成分': 'No high-risk ingredients above the threshold were detected',
+            '未检出超过阈值的阳性候选成分': 'No high-risk ingredients above the threshold were detected',
             '细胞水平模型': 'In Vitro Model',
             '动物活体模型': 'In Vivo Animal Model',
             '人体临床模型': 'Human Clinical Model',
@@ -1533,8 +1600,8 @@
             '机制维度系统结果': 'Mechanistic Analysis Results',
             '机制维度': 'Mechanistic Dimension',
             '研究解读': 'Research Interpretation',
-            '高风险成分TOP': 'Top High-Risk Ingredients',
-            '高危成分 TOP20': 'Top 20 High-Risk Ingredients',
+            '候选成分 Pmax TOP': 'Top Positive Candidate Ingredients',
+            '阳性候选成分 TOP20': 'Top 20 Positive Candidate Ingredients',
             '主要化学类别': 'Major Chemical Classes',
             '主要结构超类': 'Major Chemical Superclasses',
             '主要化学通路分类': 'Major Chemical Pathway Categories',
@@ -1605,7 +1672,7 @@
             '毒性概率': 'Toxicity Probability',
             '该检索维度不调用多模型毒性概率预测': 'This search type does not invoke multimodel toxicity probability prediction',
             '如需获得最终风险裁定，请以方剂、单味中药或化学成分作为预测入口': 'To obtain a final risk assessment, please use Formula, Herb, or Ingredient as the prediction entry',
-            '高危肝毒成分明细': 'High-Risk Hepatotoxic Ingredient Details',
+            '阳性候选成分明细': 'Positive Candidate Ingredient Details',
             '毒性成分对应靶标': 'Targets Associated with Toxic Ingredients',
             '毒性成分靶标对应GO术语': 'GO Terms Associated with Toxic Ingredient Targets',
             '毒性成分靶标对应信号通路': 'Pathways Associated with Toxic Ingredient Targets',
@@ -1677,7 +1744,7 @@
             'Ontology-GO术语': 'Ontology-GO Term',
             '靶标-Ontology': 'Target-Ontology',
             '来源中药风险贡献': 'Risk Contribution by Source Herb',
-            '高危成分类别分布': 'Distribution of High-Risk Ingredient Classes',
+            '阳性候选成分类别分布': 'Distribution of Positive Candidate Ingredient Classes',
             '成分-靶标-通路网络': 'Ingredient-Target-Pathway Network',
             '匹配溯源实体数量': 'Match Traceability Entity Counts',
             '匹配成分类别分布': 'Distribution of Matched Ingredient Classes',
@@ -1728,7 +1795,7 @@
             '通路机制优先级': 'Pathway Mechanism Priority',
             'GO机制分类': 'GO Mechanism Classification',
             '肝病相关疾病 TOP20': 'Top 20 Liver-Related Diseases',
-            '三模型肝毒性概率': 'Three-Model Hepatotoxicity Probability',
+            '三端点最大概率': 'Three-Model Hepatotoxicity Probability',
             '预测流程收敛': 'Prediction Workflow Convergence',
             '总成分': 'Total Ingredients',
             '有效SMILES': 'Valid SMILES',
@@ -1777,7 +1844,7 @@
             '预测入血成分数': 'Predicted Systemically Absorbed Ingredients',
             '入血判定成分数': 'Systemically Absorbed Ingredients',
             '有效吸收成分数': 'Effectively Absorbed Ingredients',
-            '高危肝毒成分数': 'High-Risk Hepatotoxic Ingredients',
+            '阳性候选成分数': 'Positive Candidate Ingredients',
             '毒性成分体内综合富集率': 'In Vivo Enrichment Ratio of Toxic Ingredients',
             '暴露加权风险': 'Exposure-Weighted Risk',
             '适用域覆盖': 'Applicability Domain Coverage',
@@ -1795,7 +1862,7 @@
             '根据有效结构、化学分类和规则覆盖估计': 'Estimated from valid structures, chemical classes, and rule coverage',
             '剂量/炮制/含量缺失时使用默认权重': 'Default weights are used when dosage, processing, or content data are missing',
             '导出报告需保留': 'Must be retained in exported reports',
-            '高危肝毒成分数 / 有效吸收成分数': 'High-risk hepatotoxic ingredients / effectively absorbed ingredients',
+            '阳性候选成分数 / 有效吸收成分数': 'High-risk hepatotoxic ingredients / effectively absorbed ingredients',
             '按 CID、ChemicalName 或 SMILES 精确匹配参考库': 'Exact reference matching by CID, ChemicalName, or SMILES',
             '模型输出仅用于研究筛查，不替代实验和临床判断': 'Model outputs are for research screening only and do not replace experimental or clinical judgment',
             '优先核对来源药味、炮制与剂量': 'Prioritize review of source herbs, processing, and dosage',
@@ -1835,7 +1902,7 @@
             '展示方剂、中药、化学成分、靶标、GO、通路、疾病和入血化合物的来源构成。': 'Shows source composition for formulae, herbs, ingredients, targets, GO terms, pathways, diseases, and systemically absorbed ingredients.',
             '按数据层级对比原始数据量、清洗去重数量和最终入库结果。': 'Compares raw records, deduplicated records, and final database records by data layer.',
             '方剂、中药、化学成分、分类、靶标、通路、GO与疾病等核心数据库规模。': 'Core database scale across formulae, herbs, ingredients, classes, targets, pathways, GO terms, and diseases.',
-            '显示三个模型包内置校准后的概率。': 'Shows probabilities calibrated by the three model bundles.',
+            '成分集合中各端点的最大模型输出；校准方式见模型卡片。': 'Maximum output per endpoint across ingredients; model cards show actual calibration.',
             '方剂或成分组整体肝毒性风险较低，可进入常规安全性复核流程。': 'The overall hepatotoxicity risk of the formula or ingredient group is low and can proceed to routine safety review.',
             '存在肝毒性成分富集迹象，建议控制剂量并进行关键成分与肝功能指标复核。': 'Signals of hepatotoxic ingredient enrichment are present; dose control and review of key ingredients and liver function indicators are recommended.',
             '系统性毒性富集率超过阈值，提示潜在药物性肝损伤风险，建议优先开展机制验证与配伍优化。': 'Systemic toxicity enrichment exceeds the threshold, suggesting potential drug-induced liver injury risk; mechanism validation and compatibility optimization are recommended.',
@@ -1865,6 +1932,18 @@
         function translateMessage(value) {
             if (value === null || value === undefined) return value;
             const text = String(value);
+            const screeningValues = {
+                reference_match: ['实测参考库命中', 'Experimental reference match'],
+                'admet_ge_0.3': ['ADMET ≥ 0.3', 'ADMET ≥ 0.3'], 'admet_below_0.3': ['ADMET < 0.3', 'ADMET < 0.3'],
+                invalid_structure: ['结构缺失或无效', 'Missing or invalid structure'], missing_admet: ['缺少 ADMET 数据', 'Missing ADMET data'],
+                evaluated: ['已评估', 'Evaluated'], not_evaluated: ['未评估', 'Unevaluated'], screened_out: ['未通过入血筛选', 'Exposure screening excluded'],
+                tied: ['并列来源', 'Tied sources'], none: ['无阳性端点', 'No positive endpoints']
+            };
+            if (screeningValues[text]) return screeningValues[text][currentLanguage === 'en' ? 1 : 0];
+            if (/^(cell|animal|clinical)([;+](cell|animal|clinical))*$/.test(text)) {
+                const names = currentLanguage === 'en' ? { cell: 'Cell', animal: 'Animal', clinical: 'Clinical' } : { cell: '细胞', animal: '动物', clinical: '临床' };
+                return text.replace(/cell|animal|clinical/g, token => names[token]);
+            }
             if (currentLanguage === 'zh') return text;
             if (PHRASE_I18N[text]) return PHRASE_I18N[text];
             if (text.startsWith('输出目录: ')) return `${getText('outputDir')}: ${text.slice('输出目录: '.length)}`;
@@ -1881,17 +1960,17 @@
                 const herbs = text.split('优先复核 ')[1].split(' 的炮制、剂量、配伍与来源批次；')[0].replace(/、/g, ', ');
                 const tail = text.split(' 的炮制、剂量、配伍与来源批次；')[1] || '';
                 const base = `Prioritize review of processing, dosage, compatibility, and source batch differences for ${herbs}; `;
-                if (tail.includes('建议围绕高危成分')) {
-                    return `${base}validate systemic absorption evidence, hepatocellular injury, bile acid transport, oxidative stress, and inflammatory pathways around high-risk ingredients.`;
+                if (tail.includes('建议围绕阳性候选成分')) {
+                    return `${base}validate systemic absorption evidence, hepatocellular injury, bile acid transport, oxidative stress, and inflammatory pathways around positive candidate ingredients.`;
                 }
-                return `${base}no high-risk enrichment signal was detected, but research review should still consider liver function indicators, pre-existing liver disease, and concomitant medication.`;
+                return `${base}screening cannot establish safety; research review should consider liver function indicators, pre-existing liver disease, and concomitant medication.`;
             }
             if (text.startsWith('优先复核来源药味、炮制、剂量、配伍与批次差异；')) {
                 const base = 'Prioritize review of source herbs, processing, dosage, compatibility, and batch differences; ';
-                if (text.includes('建议围绕高危成分')) {
-                    return `${base}validate systemic absorption evidence, hepatocellular injury, bile acid transport, oxidative stress, and inflammatory pathways around high-risk ingredients.`;
+                if (text.includes('建议围绕阳性候选成分')) {
+                    return `${base}validate systemic absorption evidence, hepatocellular injury, bile acid transport, oxidative stress, and inflammatory pathways around positive candidate ingredients.`;
                 }
-                return `${base}no high-risk enrichment signal was detected, but research review should still consider liver function indicators, pre-existing liver disease, and concomitant medication.`;
+                return `${base}screening cannot establish safety; research review should consider liver function indicators, pre-existing liver disease, and concomitant medication.`;
             }
             if (text.startsWith('接口调用失败')) return text.replace('接口调用失败', getText('interfaceFailed'));
             if (text.startsWith('不支持的预测类型:')) return text.replace('不支持的预测类型:', 'Unsupported prediction type:');
@@ -1980,7 +2059,7 @@
             pathway_priority_score: 'Pathway Priority Score',
             disease_priority_score: 'Disease Priority Score',
             go_priority_score: 'GO Priority Score',
-            high_toxic_count: 'High-Risk Ingredient Count',
+            high_toxic_count: 'Positive Candidate Count',
             mean_risk: 'Mean Risk',
             score_type: 'Score Type',
             probability: 'Probability',
@@ -1993,7 +2072,17 @@
             value: 'Value'
         };
 
+        const SCREENING_COLUMN_LABELS = {
+            Hepatotoxicity_Score: ['综合分数 (0–3)', 'Score (0–3)'], Positive_Endpoints: ['阳性端点', 'Positive Endpoints'],
+            Endpoint_Combination: ['端点组合', 'Endpoint Combination'], Pmax_Source: ['Pmax 来源', 'Pmax Source'],
+            Precomputed_Match: ['预计算数据命中', 'Precomputed Match'], Reference_Match: ['实测参考库命中', 'Experimental Match'],
+            IntoBlood_Reason: ['筛选原因', 'Screening Reason'], Assessment_Status: ['评估状态', 'Assessment Status'],
+            Standardized_SMILES: ['标准化结构', 'Standardized SMILES'], Raw_Record_Count: ['原始记录频次', 'Raw Record Frequency'],
+            Max_Tox_Prob: ['Pmax', 'Pmax']
+        };
+
         function translateColumnLabel(label) {
+            if (SCREENING_COLUMN_LABELS[label]) return SCREENING_COLUMN_LABELS[label][currentLanguage === 'en' ? 1 : 0];
             if (currentLanguage === 'en' && COLUMN_LABELS_EN[label]) return COLUMN_LABELS_EN[label];
             return translateMessage(label);
         }
@@ -2167,6 +2256,8 @@
             setText('sidebarTeamTitle', getText('teamTitle'));
             setText('homeChiefArchitectLabel', getText('chiefArchitect'));
             setText('sidebarChiefArchitectLabel', getText('chiefArchitect'));
+            setText('homeChiefArchitectValue', getText('chiefArchitectValue'));
+            setText('sidebarChiefArchitectValue', getText('chiefArchitectValue'));
             setText('homeInstitutionLabel', getText('institution'));
             setText('sidebarInstitutionLabel', getText('institution'));
             setText('homeInstitutionValue', getText('institutionValue'));
@@ -2227,8 +2318,9 @@
                 );
                 if (currentViewContext.apiResult?.summary) {
                     const summary = currentViewContext.apiResult.summary;
-                    setText('toxVerdict', translateMessage(summary.risk_label || '已完成'));
+                    setText('toxVerdict', translateMessage(currentViewContext.apiResult.legacy_result ? '历史结果（旧版口径）' : (summary.risk_label || '无法评估')));
                     setText('toxProb', formatPercent(summary.max_toxic_probability));
+                    updateModelMetadata(currentViewContext.apiResult);
                 } else if (currentViewContext.errorMessage) {
                     setText('toxVerdict', translateMessage('运行异常'));
                 }
@@ -2628,11 +2720,11 @@
         function riskGlow(level) {
             if (level === 'high') return 'glow-red';
             if (level === 'moderate') return 'glow-yellow';
-            return 'glow-green';
+            return 'glow-cyan';
         }
 
         function highRiskText(rows) {
-            if (!Array.isArray(rows) || rows.length === 0) return '未检出超过阈值的高危成分';
+            if (!Array.isArray(rows) || rows.length === 0) return '未检出超过阈值的阳性候选成分';
             return rows.slice(0, 8).map(row => {
                 const name = row.ChemicalName || row.CID || row.Smiles || '未知成分';
                 return `${name} (${formatPercent(row.Max_Tox_Prob)})`;
@@ -2653,20 +2745,6 @@
         function foodMedicineHomologyNote(summary) {
             const homology = summary.food_medicine_homology || {};
             return homology.note || '严格按药食同源名单精确匹配，仅作为研究参考标注';
-        }
-
-        function consensusReferenceText(summary) {
-            const consensus = summary.consensus_reference || {};
-            if (!consensus || Object.keys(consensus).length === 0) return '未提供';
-            return `${formatPercent(consensus.max_probability)} / ${consensus.risk_label || '已完成'}`;
-        }
-
-        function consensusReferenceNote(summary) {
-            const consensus = summary.consensus_reference || {};
-            const flags = Array.isArray(consensus.model_quality_flags) && consensus.model_quality_flags.length
-                ? `；质量提示：${consensus.model_quality_flags.join('、')}`
-                : '';
-            return `动物模型降权后的参考口径，阈值 ${formatPercent(consensus.toxic_threshold)}${flags}`;
         }
 
         function disposeChartInstances(instances) {
@@ -3233,7 +3311,7 @@
         }
 
         function fallbackCountItems(primaryItems, records, fields, limit = 20) {
-            if (Array.isArray(primaryItems) && primaryItems.length) return primaryItems;
+            if (Array.isArray(primaryItems)) return primaryItems;
             const counts = new Map();
             (Array.isArray(records) ? records : []).forEach(record => {
                 const name = fields.map(field => record?.[field]).find(usableEntity);
@@ -3268,18 +3346,18 @@
         function buildToxicityRiskModelBarSpec(result) {
             const probabilities = result?.probabilities || {};
             const rows = [
-                { model: 'Cell', score_type: 'raw', probability: Number(probabilities.cell || 0) },
-                { model: 'Animal', score_type: 'raw', probability: Number(probabilities.animal || 0) },
-                { model: 'Clinical', score_type: 'raw', probability: Number(probabilities.clinical || 0) }
+                { model: 'Cell', score_type: 'raw', probability: probabilities.cell ?? null },
+                { model: 'Animal', score_type: 'raw', probability: probabilities.animal ?? null },
+                { model: 'Clinical', score_type: 'raw', probability: probabilities.clinical ?? null }
             ];
             return makeFrontendChartSpec(
                 'risk_model_bar',
-                '三模型肝毒性概率',
+                '三端点最大概率',
                 'bar',
                 rows,
                 { x: 'model', y: 'probability', series: 'score_type' },
                 {
-                    description: '显示三个模型包内置校准后的概率。',
+                    description: '成分集合中各端点的最大模型输出；校准方式见模型卡片。',
                     source_section: 'toxicity_final',
                     filters: { no_topn: true },
                     layout: { fullRow: true }
@@ -3418,6 +3496,27 @@
             return makeToxicityNetworkSpec('toxicity_target_disease_network', '靶标-疾病网络', nodes, edges);
         }
 
+        function screeningChartSpecs(result) {
+            const stats = result?.prediction_statistics;
+            if (!stats) return [];
+            const summary = result.summary || {};
+            const chart = (id, title, rows) => makeFrontendChartSpec(id, title, 'bar', rows,
+                { x: 'name', y: 'count' }, { source_section: 'overview', filters: { no_topn: true },
+                    description: '按完整结果中的唯一成分计数；未评估成分不计入端点阴性。', layout: { showValueLabels: true } });
+            return [
+                chart('blood_screening', '入血筛选流程（唯一成分数）', [
+                    ['总成分', 'total_compounds'], ['实测匹配', 'reference_match_count'], ['ADMET通过', 'admet_pass_count'],
+                    ['低于入血阈值', 'screened_out_count'], ['数据不足', 'insufficient_data_count'], ['已评估', 'evaluated_count']
+                ].map(([name, key]) => ({ name, count: summary[key] ?? 0 }))),
+                chart('endpoint_counts', '三端点阳性 / 阴性（唯一成分数）', (stats.endpoint_counts || []).flatMap(row => [
+                    { name: row.endpoint + ' (+)', count: row.positive }, { name: row.endpoint + ' (−)', count: row.negative }])),
+                chart('endpoint_combinations', '八种端点组合（唯一成分数）', stats.combination_counts || []),
+                chart('endpoint_scores', '0–3 分分布（唯一成分数）', (stats.score_counts || []).map(row => ({ name: String(row.score), count: row.count }))),
+                chart('pmax_sources', 'Pmax 来源（唯一成分数）', stats.pmax_source_counts || []),
+                makeToxicityCountBarSpec('disease_counts', '疾病关联（唯一成分数）', result.disease_counts, 20, { keepEmpty: true })
+            ];
+        }
+
         function toxicityOverviewChartSpecs(result, inputContent, typeValue) {
             const allCompounds = Array.isArray(result?.compounds) ? result.compounds : [];
             const absorbedCompounds = allCompounds.filter(isIntoBloodRecord);
@@ -3443,6 +3542,7 @@
                 20
             );
             return [
+                ...screeningChartSpecs(result),
                 buildEntityFormulaNetworkSpec(result, inputContent, typeValue),
                 buildEntityIngredientNetworkSpec(result, inputContent, typeValue, allCompounds, 'toxicity_entity_ingredient_network', toxicityNetworkTitle(typeValue, '成分'), 'ingredient', toxicityRelationLabel(typeValue, '成分')),
                 buildEntityIngredientNetworkSpec(result, inputContent, typeValue, absorbedCompounds, 'toxicity_entity_absorbed_ingredient_network', toxicityNetworkTitle(typeValue, '入血成分'), 'ingredient', toxicityRelationLabel(typeValue, '入血成分')),
@@ -3450,9 +3550,9 @@
                 makeToxicityCountBarSpec('toxicity_class_count_bar', '化学类别统计', result?.class_counts, 20, { keepEmpty: true }),
                 makeToxicityCountBarSpec('toxicity_superclass_count_bar', '结构超类统计', result?.superclass_counts, 20, { keepEmpty: true }),
                 makeToxicityCountBarSpec('toxicity_pathway_family_count_bar', '化学通路统计', result?.pathway_family_counts, 20, { keepEmpty: true }),
-                makeToxicityCountBarSpec('toxicity_target_count_bar', '靶标统计', targetCountItems, 20, { keepEmpty: true }),
-                makeToxicityCountBarSpec('toxicity_pathway_count_bar', '信号通路统计', pathwayCountItems, 20, { keepEmpty: true }),
-                makeToxicityCountBarSpec('toxicity_go_count_bar', 'GO术语统计', goCountItems, 20, { keepEmpty: true })
+                makeToxicityCountBarSpec('toxicity_target_count_bar', '靶标统计（唯一成分数）', targetCountItems, 20, { keepEmpty: true }),
+                makeToxicityCountBarSpec('toxicity_pathway_count_bar', '信号通路统计（唯一靶标数）', pathwayCountItems, 20, { keepEmpty: true }),
+                makeToxicityCountBarSpec('toxicity_go_count_bar', 'GO术语统计（唯一靶标数）', goCountItems, 20, { keepEmpty: true })
             ].filter(Boolean);
         }
 
@@ -4223,7 +4323,7 @@
                 },
                 series: [{
                     type: 'bar',
-                    data: sorted.map((row, index) => palette ? { value: Number(row[yKey] || 0), itemStyle: { color: palette[index % palette.length] } } : Number(row[yKey] || 0)),
+                    data: sorted.map((row, index) => palette ? { value: row[yKey] == null ? null : Number(row[yKey]), itemStyle: { color: palette[index % palette.length] } } : Number(row[yKey] || 0)),
                     itemStyle: { color: palette ? undefined : '#2f6f9f' },
                     label: spec.layout?.showValueLabels ? {
                         show: true,
@@ -4339,7 +4439,7 @@
             const xKey = enc.x || 'model';
             const yKey = enc.y || 'probability';
             const rowByModel = new Map(data.map(row => [row[xKey], row]));
-            const rows = order.map(model => rowByModel.get(model) || { [xKey]: model, [yKey]: 0 });
+            const rows = order.map(model => rowByModel.get(model) || { [xKey]: model, [yKey]: null });
             return {
                 tooltip: {
                     trigger: 'axis',
@@ -4367,7 +4467,7 @@
                 series: [{
                     type: 'bar',
                     data: rows.map(row => ({
-                        value: Number(row[yKey] || 0),
+                        value: row[yKey] == null ? null : Number(row[yKey]),
                         itemStyle: { color: NATURE_MODEL_COLORS[row[xKey]] || '#4DBBD5' }
                     })),
                     barMaxWidth: 56,
@@ -4388,7 +4488,7 @@
             const yKey = enc.y || 'count';
             const rows = data.map((row, index) => ({
                 name: displayValue(row[xKey]),
-                value: Number(row[yKey] || 0),
+                value: row[yKey] == null ? null : Number(row[yKey]),
                 itemStyle: { color: DATABASE_STAT_COLORS[index % DATABASE_STAT_COLORS.length] }
             }));
             return {
@@ -4666,7 +4766,7 @@
                 .sort((a, b) => Number(b[yKey] || 0) - Number(a[yKey] || 0))
                 .map((row, index) => ({
                     name: displayValue(row[xKey]),
-                    value: Number(row[yKey] || 0),
+                    value: row[yKey] == null ? null : Number(row[yKey]),
                     itemStyle: { color: DATABASE_STAT_COLORS[index % DATABASE_STAT_COLORS.length] }
                 }));
             return {
@@ -4995,14 +5095,14 @@
                     `;
                 }
                 const headerHtml = section.headers.map(header => `<th>${escapeHtml(translateColumnLabel(header))}</th>`).join('');
-                const totalRows = section.rows.length;
+                const totalRows = section.page_api ? (section.row_count ?? section.rows.length) : section.rows.length;
                 const maxPage = Math.max(1, Math.ceil(totalRows / rowsPerPage));
                 const requestedPage = sectionPageState[sectionIndex] || 1;
                 const currentPage = Math.min(Math.max(requestedPage, 1), maxPage);
                 sectionPageState[sectionIndex] = currentPage;
                 const startIndex = (currentPage - 1) * rowsPerPage;
                 const endIndex = Math.min(startIndex + rowsPerPage, totalRows);
-                const visibleRows = section.rows.slice(startIndex, endIndex);
+                const visibleRows = section.remote_page === currentPage && section.remote_size === rowsPerPage ? section.remote_rows : section.rows.slice(startIndex, endIndex);
                 const rangeText = getText('showRange')(startIndex + 1, endIndex, totalRows);
                 const rowsHtml = visibleRows.map(row => {
                     const cells = section.headers.map((_, index) => {
@@ -5045,12 +5145,26 @@
             document.getElementById('exportBtn').style.display = allExportSections.length ? 'block' : 'none';
         }
 
-        function changeSectionPage(sectionIndex, delta) {
+        async function changeSectionPage(sectionIndex, delta) {
             const section = currentDisplaySections[sectionIndex];
-            if (!isTableSection(section)) return;
-            const maxPage = Math.max(1, Math.ceil(section.rows.length / rowsPerPage));
-            const currentPage = sectionPageState[sectionIndex] || 1;
-            sectionPageState[sectionIndex] = Math.min(Math.max(currentPage + delta, 1), maxPage);
+            if (!isTableSection(section) || section.loading) return;
+            const totalRows = section.page_api ? section.row_count : section.rows.length;
+            const maxPage = Math.max(1, Math.ceil(totalRows / rowsPerPage));
+            const nextPage = Math.min(Math.max((sectionPageState[sectionIndex] || 1) + delta, 1), maxPage);
+            if (section.page_api) {
+                section.loading = true;
+                try {
+                    const page = await getJson(`${section.page_api}?page=${nextPage}&page_size=${rowsPerPage}`);
+                    section.remote_rows = page.rows;
+                    section.remote_page = nextPage;
+                    section.remote_size = rowsPerPage;
+                    section.row_count = page.section.row_count;
+                    section.headers = page.headers;
+                } catch (error) { alert(error.message); return; }
+                finally { section.loading = false; }
+            }
+            if (!currentDisplaySections.includes(section)) return;
+            sectionPageState[sectionIndex] = nextPage;
             renderSections(currentDisplaySections, true);
         }
 
@@ -5090,7 +5204,9 @@
                 row.MW,
                 row.QED,
                 formatPercent(row.Bioavailability_Ma),
-                formatPercent(row.Max_Tox_Prob)
+                formatPercent(row.Max_Tox_Prob),
+                row.Hepatotoxicity_Score, row.Positive_Endpoints, row.Endpoint_Combination, row.Pmax_Source,
+                row.Reference_Match, row.Precomputed_Match, row.IntoBlood_Reason, row.Assessment_Status, row.Standardized_SMILES
             ]);
         }
 
@@ -5098,9 +5214,9 @@
             const herbs = uniqueList(context.matched_herbs || context.herbs, 4).join('、');
             const herbPart = herbs ? `优先复核 ${herbs} 的炮制、剂量、配伍与来源批次；` : '优先复核来源药味、炮制、剂量、配伍与批次差异；';
             if ((summary.high_toxic_count ?? 0) > 0) {
-                return `${herbPart}建议围绕高危成分的入血证据、肝细胞损伤、胆汁酸转运、氧化应激和炎症通路开展验证。`;
+                return `${herbPart}建议围绕阳性候选成分的入血证据、肝细胞损伤、胆汁酸转运、氧化应激和炎症通路开展验证。`;
             }
-            return `${herbPart}当前未检出高危富集信号，仍建议结合肝功能指标、既往肝病背景和合并用药进行研究性复核。`;
+            return `${herbPart}当前筛查结果不能用于判定安全性，建议结合肝功能指标、既往肝病背景和合并用药进行研究性复核。`;
         }
 
         function detailRows(records, columns) {
@@ -5195,7 +5311,9 @@
         }
 
         function normalizeToxicRelationSections(sectionKey, sections, fallbackSections = []) {
-            const columns = TOXIC_RELATION_SECTION_COLUMNS[sectionKey];
+            const baseColumns = TOXIC_RELATION_SECTION_COLUMNS[sectionKey];
+            const extraColumns = ["CID", "Smiles", "Standardized_SMILES", "Raw_Record_Count"].filter(c => (sections || []).some(section => (section.headers || []).includes(c)));
+            const columns = baseColumns ? [...baseColumns, ...extraColumns] : null;
             if (!columns) return sections;
             const normalized = (Array.isArray(sections) ? sections : []).map(section => {
                 const rows = (section.rows || []).map(row => {
@@ -5214,7 +5332,10 @@
         function csvSectionsOrFallback(result, key, fallbackSections) {
             const groups = result?.csv_sections || {};
             const sections = Array.isArray(groups[key]) ? groups[key] : fallbackSections;
-            return normalizeToxicRelationSections(key, sections, fallbackSections);
+            return normalizeToxicRelationSections(key, sections, fallbackSections).map(section => {
+                const info = (result.sections || []).find(item => item.source_file === section.source_file || item.id === section.section_id);
+                return { ...section, export_api: info?.export_api || section.export_api, page_api: info?.page_api, row_count: info?.row_count ?? section.row_count };
+            });
         }
 
         function detailsOf(result, groupName, key) {
@@ -5456,21 +5577,26 @@
             const finalRows = [
                 ['目标实体名称', inputContent, '用户输入'],
                 ['检索维度', inputTypeText, '系统分析入口'],
-                ['综合毒性概率预测', formatPercent(summary.calibrated_max_toxic_probability ?? summary.max_toxic_probability), '模型包校准后的最高风险概率，非临床发生率'],
-                ['校准状态', summary.calibration_status || 'missing', summary.calibration_status === 'embedded' ? '模型包内置校准' : '未检测到独立校准模型，未伪造校准概率'],
-                ['结果置信度', `${summary.confidence_level || '未提供'} / ${displayValue(summary.confidence_score)}`, Array.isArray(summary.confidence_reasons) ? summary.confidence_reasons.join('；') : '未提供'],
-                ['适用域覆盖', `${summary.domain_label || '未提供'} / ${formatRatio(summary.domain_coverage)}`, '根据有效结构、化学分类和规则覆盖估计'],
-                ['暴露加权风险', formatPercent(summary.exposure_weighted_risk), '剂量/炮制/含量缺失时使用默认权重'],
-                ['系统安全裁定', summary.risk_label || '已完成', summary.advice || '无'],
+                ['Pmax（成分集合最大值）', formatPercent(summary.max_toxic_probability), '所有已评估成分、所有端点中的最大模型输出；不是临床发生率。'],
+                ['Pmax 来源成分与端点', (summary.pmax_contributors || []).map(row => `${row.name} (CID ${row.CID ?? '—'}): ${row.endpoints.join(' / ')}`).join('；') || '无法评估', '并列最大值全部保留'],
+                ['筛查状态', result.legacy_result ? '历史结果（旧版口径）' : (summary.risk_label || '无法评估'), summary.advice || '无'],
+                ['已评估成分数', summary.evaluated_count ?? summary.absorbed_count ?? 0, '通过入血筛选且结构有效'],
+                ['阳性候选成分数', summary.candidate_count ?? summary.high_toxic_count ?? 0, '至少一个端点阳性；按 Pmax 降序'],
+                ['未评估成分数', summary.not_evaluated_count ?? 0, '包括未通过入血筛选及数据不足'],
+                ['实测参考库命中数', summary.reference_match_count ?? 0, '实测命中直接通过，不要求 ADMET 值'],
+                ['ADMET 预测通过数', summary.admet_pass_count ?? 0, '其余成分 Bioavailability_Ma ≥ 0.3；预计算命中不等于实测证据'],
+                ['低于入血阈值', summary.screened_out_count ?? 0, '保留记录，不进入毒性预测'],
+                ['数据不足', summary.insufficient_data_count ?? 0, '无效结构或缺少 ADMET 数据'],
+                ['端点阳性阈值', 'cell ≥ 0.55; animal ≥ 0.96; clinical ≥ 0.64', '按未四舍五入的概率判定；0–3 分为阳性端点数'],
+                ['计数口径', '唯一成分：CID 优先，缺失时采用标准化结构', '靶标按唯一成分；GO/通路按唯一靶标；疾病按唯一成分，另列原始记录频次'],
+                ['关联解释', '数据库关联不代表因果证据或新计算的显著性富集', '图谱仅展示关系预览；统计与 CSV 使用完整结果'],
+                ['方法版本', summary.method_version || '历史结果（旧版口径）', result.response_schema_version || 'legacy'],
                 ['药食同源标注', foodMedicineHomologyText(summary), foodMedicineHomologyNote(summary)],
-                ['模型一致性参考', consensusReferenceText(summary), consensusReferenceNote(summary)],
-                ['高危肝毒成分数', summary.high_toxic_count ?? 0, `阈值 ${formatPercent(summary.toxic_threshold)}`],
-                ['毒性成分体内综合富集率', formatRatio(summary.enrichment_ratio), '高危肝毒成分数 / 有效吸收成分数'],
                 ['免责声明', summary.disclaimer || '本系统结果仅用于科研辅助和风险优先级排序，不作为处方、停药或安全性最终判断。', '导出报告需保留']
             ];
 
             const overviewRows = [
-                ['高风险成分TOP', highRiskText(result.high_risk_compounds), '优先核对来源药味、炮制与剂量'],
+                ['候选成分 Pmax TOP', highRiskText(result.high_risk_compounds), '优先核对来源药味、炮制与剂量'],
                 ['主要化学类别', formatCounts(result.class_counts), '提示可能的结构风险簇'],
                 ['主要结构超类', formatCounts(result.superclass_counts), '用于追踪同类成分累积暴露'],
                 ['主要化学通路分类', formatCounts(result.pathway_family_counts), '用于解释成分来源与代谢属性'],
@@ -5512,12 +5638,12 @@
                     tabs: [
                         {
                             id: 'final',
-                            title: '最终结论',
-                            tableTitle: '最终结论与风险裁定',
+                            title: '筛查摘要',
+                            tableTitle: '筛查摘要',
                             showSummary: true,
                             sections: [
                                 makeChartSection('模型概率图', buildToxicityRiskModelBarSpec(result)),
-                                makeSection('综合风险裁定', ['评估项目', '系统结果', '说明'], finalRows)
+                                makeSection('筛查摘要', ['评估项目', '系统结果', '说明'], finalRows)
                             ].filter(Boolean)
                         },
                         {
@@ -5537,8 +5663,8 @@
                             title: '毒性成分明细',
                             tableTitle: '毒性成分明细',
                             sections: csvSectionsOrFallback(result, 'toxic_compounds', [makeSection(
-                                '高危肝毒成分明细',
-                                ['CID', '化学成分', '来源中药', '化学类别', '结构超类', '通路家族', '入血预测', '有效吸收', 'LogP', 'MW', 'QED', '生物利用度', '最高模型风险'],
+                                '阳性候选成分明细',
+                                ['CID', '化学成分', '来源中药', '化学类别', '结构超类', '通路家族', '入血预测', '有效吸收', 'LogP', 'MW', 'QED', '生物利用度', 'Pmax', '综合分数', '阳性端点', '端点组合', 'Pmax 来源', '实测匹配', '预计算匹配', '筛选原因', '评估状态', '标准化结构'],
                                 toxicCompoundRecords.length ? compoundRows(toxicCompoundRecords) : []
                             )])
                         },
@@ -5647,56 +5773,6 @@
             ];
         }
 
-        function sectionsFromPrediction(result, inputContent, typeValue) {
-            const inputTypeText = I18N.zh.queryTypes[typeValue] || typeValue;
-            const summary = result.summary || {};
-            const context = result.context || {};
-
-            const metricRows = [
-                ['目标实体名称', inputContent, '用户输入'],
-                ['检索维度', inputTypeText, '系统分析入口'],
-                ['匹配方剂', uniqueList(context.matched_formulas || context.related_formulas).length, '方剂-中药关系映射'],
-                ['匹配中药', uniqueList(context.matched_herbs || context.herbs).length, '中药-成分关系映射'],
-                ['检出化学成分数', summary.total_compounds ?? 0, '纳入本次计算的化学成分'],
-                ['有效SMILES数量', summary.valid_smiles_count ?? 0, '可进入结构特征计算的成分'],
-                ['入血判定成分数', summary.intoblood_count ?? 0, '按 CID、ChemicalName 或 SMILES 精确匹配参考库'],
-                ['有效吸收成分数', summary.absorbed_count ?? 0, '满足入血、LogP、分子量、QED 与生物利用度阈值'],
-                ['高危肝毒成分数', summary.high_toxic_count ?? 0, '达到高危阈值的有效吸收成分'],
-                ['毒性成分体内综合富集率', formatRatio(summary.enrichment_ratio), '高危肝毒成分数 / 有效吸收成分数']
-            ];
-
-            const entityRows = [];
-            appendEntityRows(entityRows, '匹配方剂', context.matched_formulas || context.related_formulas, 'formula_herb.csv');
-            appendEntityRows(entityRows, '匹配中药', context.matched_herbs || context.herbs, 'formula_herb.csv / herb_compound.csv');
-            appendEntityRows(entityRows, '匹配化学成分', context.matched_compounds, 'compound_class.csv / 用户输入解析');
-
-            const mechanismRows = [
-                ['高风险成分TOP', highRiskText(result.high_risk_compounds), '优先核对来源药味、炮制与剂量'],
-                ['主要化学类别', formatCounts(result.class_counts), '提示可能的结构风险簇'],
-                ['主要结构超类', formatCounts(result.superclass_counts), '用于追踪同类成分累积暴露'],
-                ['主要化学通路分类', formatCounts(result.pathway_family_counts), '用于解释成分来源与代谢属性'],
-                ['主要干扰靶标', formatCounts(result.target_counts), '建议结合肝损伤相关靶标验证'],
-                ['主要信号通路', formatCounts(result.pathway_counts), '关注炎症、氧化应激、胆汁酸与药物代谢通路'],
-                ['主要GO术语', formatCounts(result.go_counts), '辅助定位细胞过程与分子功能'],
-                ['研究复核建议', summary.advice || '无', '模型输出仅用于研究筛查，不替代实验和临床判断'],
-                ['中医药研究复核要点', researchReviewAdvice(summary, context), '结合炮制、配伍、剂量、疗程和个体肝功能背景解读']
-            ];
-            if (Array.isArray(result.warnings) && result.warnings.length) {
-                mechanismRows.push(['运行提示', result.warnings.join('；'), '建议核对依赖模型与输入数据完整性']);
-            }
-
-            const sections = [
-                makeSection('核心计数与关联概览', ['指标', '数值', '说明'], metricRows),
-                makeSection('匹配实体与溯源关系', ['关联类型', '实体名称', '数据来源'], entityRows),
-                makeSection('毒性风险与机制明细', ['机制维度', '系统结果', '研究解读'], mechanismRows)
-            ];
-            if (Array.isArray(result.high_risk_compounds) && result.high_risk_compounds.length) {
-                sections.push(makeSection('高危肝毒成分明细', ['CID', '化学成分', '来源中药', '化学类别', '结构超类', '通路家族', '入血预测', '有效吸收', 'LogP', 'MW', 'QED', '生物利用度', '最高模型风险'], compoundRows(result.high_risk_compounds)));
-            }
-            sections.push(makeSection('成分预测明细（前100条）', ['CID', '化学成分', '来源中药', '化学类别', '结构超类', '通路家族', '入血预测', '有效吸收', 'LogP', 'MW', 'QED', '生物利用度', '最高模型风险'], compoundRows(result.compounds)));
-            return sections;
-        }
-
         function sectionsFromKnowledge(result, inputContent, typeValue) {
             const inputTypeText = I18N.zh.queryTypes[typeValue] || typeValue;
             const summary = result.summary || {};
@@ -5770,58 +5846,20 @@
         }
 
         function aiModelTexts() {
-            return currentLanguage === 'en'
-                ? [
-                    'Logistic Regression', 'Naive Bayes', 'Random Forest',
-                    'Support Vector Machine (SVM)', 'XGBoost Ensemble Trees', 'Deep Multilayer Perceptron (MLP)',
-                    'Graph Convolutional Network (GCN)', 'Graph Attention Network (GAT)',
-                    'Message Passing Neural Network (MPNN)', 'LLM-Fusion Multimodal Integration'
-                ]
-                : [
-                    '逻辑回归 (Logistic Regression)', '朴素贝叶斯 (Naive Bayes)', '随机森林 (Random Forest)',
-                    '支持向量机 (SVM)', 'XGBoost 集成树', '多层感知机 (Deep MLP)', '图卷积神经网络 (GCN)',
-                    '图注意力网络 (GAT)', '消息传递神经网络 (MPNN)', '大语言模型多模态融合 (LLM-Fusion)'
-                ];
+            return ['Cell: Stacking', 'Animal: BalancedRandomForest', 'Clinical: RandomForest'];
         }
-        
+
         function dbOperationTexts() {
             return currentLanguage === 'en'
-                ? [
-                    'Querying local Knowledge Graph mappings...', 'Executing graph retrieval statements...', 'Extracting core node features...',
-                    'Aggregating GO biological process enrichment...', 'Traversing KEGG pathways...', 'Tracing upstream herb-target networks...',
-                    'Computing node degree centrality...', 'Extracting [01 Formula-Herb] associations...', 'Extracting [02 Herb-Ingredient] associations...',
-                    'Extracting [07 Ingredient-Systemic Absorption] parameters...'
-                ]
-                : [
-                    '查询 本地知识图谱映射...', '执行 Cypher 检索语句...', '提取 核心节点特征...',
-                    '聚合 GO生物过程富集结果...', '遍历 KEGG 信号通路...', '反向溯源中药靶标网...', 
-                    '计算 节点度(Degree)中心性...', '提取 [01方剂-中药] 关系...', '提取 [02中药-成分] 关系...',
-                    '提取 [07成分-入血] 参数...'
-                ];
+                ? ['Matching local CID and structures...', 'Reading stored ADMET results...', 'Mapping ingredient–target associations...', 'Counting unique targets and ingredients...']
+                : ['匹配本地 CID 与结构...', '读取已保存的 ADMET 结果...', '映射成分–靶标关联...', '统计唯一靶标与唯一成分...'];
         }
 
         function predictionPipelineSteps() {
-            return currentLanguage === 'en'
-                ? [
-                    { id: 'formula', name: '[Decompose] Formula' },
-                    { id: 'herb', name: '[Extract] Herbs' },
-                    { id: 'compound', name: '[Screen] Systemically Absorbed Ingredients' },
-                    { id: 'class', name: '[Classify] Chemical Structures' },
-                    { id: 'target', name: '[Map] Toxicity-Related Targets' },
-                    { id: 'pathway', name: '[Enrich] Molecular Pathway Mechanisms' },
-                    { id: 'predict', name: '[Analyze] Multimodel Ensemble Prediction' },
-                    { id: 'verdict', name: '[Assess] System Safety Assessment' }
-                ]
-                : [
-                    { id: 'formula', name: '[解构] 中药方剂' },
-                    { id: 'herb', name: '[提取] 单味药材' },
-                    { id: 'compound', name: '[筛选] 入血成分' },
-                    { id: 'class', name: '[归类] 化学结构分类' },
-                    { id: 'target', name: '[映射] 毒性作用靶标' },
-                    { id: 'pathway', name: '[富集] 分子通路机制' },
-                    { id: 'predict', name: '[演算] 多模型集成预测' },
-                    { id: 'verdict', name: '[判定] 系统安全裁定' }
-                ];
+            const names = currentLanguage === 'en'
+                ? ['Resolve formulae and herbs', 'Match local ingredients', 'Experimental match or ADMET ≥ 0.3', 'Keep largest fragment; neutralize; canonical SMILES', 'Run saved endpoint models', 'Apply endpoint thresholds; score 0–3', 'Map candidate associations', 'Summarize Pmax and full counts']
+                : ['解析方剂与中药', '匹配本地成分', '实测命中或 ADMET ≥ 0.3', '最大碎片、中和、标准化结构', '调用已保存的端点模型', '按端点阈值计算 0–3 分', '映射候选成分关联', '汇总 Pmax 与完整计数'];
+            return ['formula', 'herb', 'compound', 'class', 'predict', 'target', 'pathway', 'verdict'].map((id, index) => ({ id, name: names[index] }));
         }
 
         function executeScan() {
@@ -5992,6 +6030,18 @@
             });
         }
 
+        function updateModelMetadata(result) {
+            const labels = { cell: ['Cell', '细胞', 'Cell'], animal: ['Mouse', '动物', 'Animal'], clinical: ['Human', '临床', 'Clinical'] };
+            for (const [endpoint, [id, zh, en]] of Object.entries(labels)) {
+                const meta = result?.model_metadata?.[endpoint];
+                const el = document.getElementById('meta' + id);
+                if (!el) continue;
+                if (!meta) { el.textContent = ''; continue; }
+                const calibrated = meta.calibration_method === 'none' ? (currentLanguage === 'en' ? 'No additional calibration' : '无额外校准') : meta.calibration_method;
+                el.textContent = `${meta.name} · ${currentLanguage === 'en' ? 'Threshold' : '阈值'} ≥ ${meta.threshold} · ${calibrated}`;
+            }
+        }
+
         function generateReport(inputContent, typeValue, isPrediction, apiResult) {
             const reportTitle = document.getElementById('reportTitle');
             const reportTitleHtml = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>`;
@@ -6023,7 +6073,8 @@
             if (isPrediction) {
                 const summary = apiResult.summary || {};
                 const probabilities = apiResult.probabilities || {};
-                const glowClass = riskGlow(summary.risk_level);
+                const glowClass = apiResult.legacy_result ? 'glow-yellow' : 'glow-cyan';
+                updateModelMetadata(apiResult);
                 const toxProb = document.getElementById('toxProb');
                 const toxVerdict = document.getElementById('toxVerdict');
 
@@ -6034,7 +6085,7 @@
                 toxProb.classList.add(glowClass);
                 toxVerdict.classList.add(glowClass);
                 toxProb.innerText = formatPercent(summary.max_toxic_probability);
-                toxVerdict.innerText = translateMessage(summary.risk_label || '已完成');
+                toxVerdict.innerText = translateMessage(apiResult.legacy_result ? '历史结果（旧版口径）' : (summary.risk_label || '无法评估'));
                 updateSubModels(
                     formatPercent(probabilities.cell),
                     formatPercent(probabilities.animal),
@@ -6086,16 +6137,33 @@
             setTimeout(() => URL.revokeObjectURL(link.href), 0);
         }
 
-        function exportSectionCSV(sectionIndex) {
+        async function exportSectionCSV(sectionIndex) {
             const section = currentDisplaySections[sectionIndex];
             if (!isTableSection(section)) return;
+            if (section.export_api) {
+                await downloadResultCsv(section.export_api, `ToxHERB_${sanitizeFilePart(section.title)}_${formatDateStamp()}.csv`);
+                return;
+            }
+            if (section.truncated) { alert(translateMessage('完整结果不可用，请重新运行预测。')); return; }
             downloadCsv(
                 sectionToCsv(section, true),
                 `ToxHERB_${sanitizeFilePart(section.title)}_${formatDateStamp()}.csv`
             );
         }
 
-        function exportCSV() {
+        async function downloadResultCsv(path, filename) {
+            try {
+                const response = await fetch(`${API_BASE_URL}${path}`);
+                if (!response.ok) throw new Error(translateMessage('完整 CSV 导出失败'));
+                downloadCsv(await response.blob(), filename);
+            } catch (error) { alert(error.message); }
+        }
+
+        async function exportCSV() {
+            if (currentResultContext?.job_id && currentViewContext?.isPrediction) {
+                await downloadResultCsv(`/api/jobs/${currentResultContext.job_id}/export`, `ToxHERB_FullResults_${formatDateStamp()}.csv`);
+                return;
+            }
             const sectionsToExport = allExportSections.length ? allExportSections : currentExportSections;
             if (sectionsToExport.length === 0) return;
             let csvContent = "\uFEFF";

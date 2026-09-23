@@ -11,10 +11,13 @@ from rdkit import Chem
 from rdkit.Chem import Descriptors, QED
 from rdkit import RDLogger
 
-from model_runtime import (
-    load_model_bundles,
-    predict_multimodel_pipeline as predict_model_bundles,
-)
+if __package__:
+    from .model_runtime import load_model_bundles, predict_multimodel_pipeline as predict_model_bundles, standardize_smiles, ENDPOINT_THRESHOLDS, METHOD_VERSION
+    from .intoblood_pred import assess_blood_exposure
+else:
+    from model_runtime import load_model_bundles, predict_multimodel_pipeline as predict_model_bundles, standardize_smiles, ENDPOINT_THRESHOLDS, METHOD_VERSION
+    from intoblood_pred import assess_blood_exposure
+
 
 
 def resource_root() -> Path:
@@ -112,222 +115,180 @@ def _food_medicine_summary(herb_candidates):
     }
 
 
-def _absorbed_count_value(value, fallback):
-    if value is None or pd.isna(value):
-        return fallback
-    match = re.search(r"\d+", str(value))
-    return int(match.group(0)) if match else fallback
-
-
-def _risk_from_enrichment(enrichment, absorbed_count):
-    if absorbed_count == 0:
-        return "🟢 低风险 (Safe)", "未检出可用于模型一致性参考的有效吸收成分。"
-    if enrichment < 0.02:
-        return "🟢 低风险 (Safe)", "模型一致性参考提示整体肝毒性风险较低。"
-    if enrichment < 0.05:
-        return "🟡 中等风险 (Moderate Risk)", "模型一致性参考提示存在肝毒性成分富集迹象。"
-    return "🔴 高风险 (High Risk)", "模型一致性参考提示系统性毒性富集率超过阈值。"
-
-
-def _consensus_summary(livertox_df, absorbed_molecule_count_or_percent=None):
-    threshold = 0.75
-    empty = {
-        "Consensus_max_probability": 0.0,
-        "Consensus_high_toxic_molecule_count": 0,
-        "Consensus_enrichment_ratio": 0.0,
-        "Consensus_risk_level": "🟢 低风险 (Safe)",
-        "Consensus_advice": "未检出可用于模型一致性参考的有效吸收成分。",
-        "Consensus_toxic_probability_threshold": threshold,
-        "Consensus_evaluated_molecule_count": 0,
-        "Animal_probability_saturation_ratio": 0.0,
-        "Model_quality_flags": "",
-    }
-    if livertox_df.empty:
-        return empty
-
-    work = livertox_df.copy()
-    if "Is_Absorbed" in work.columns:
-        absorbed_mask = work["Is_Absorbed"].map(
-            lambda value: value is True or str(value).strip().casefold() in {"true", "1", "yes"}
-        )
-        work = work[absorbed_mask].copy()
-    if work.empty:
-        return empty
-
-    index = work.index
-    weighted_sum = pd.Series(0.0, index=index)
-    weight_sum = pd.Series(0.0, index=index)
-
-    def add_weighted(column, weight, calibrated=False):
-        if column not in work.columns:
-            return
-        values = pd.to_numeric(work[column], errors="coerce")
-        values = values.where(values >= 0)
-        if calibrated:
-            values = (0.5 + 0.35 * (values - 0.5)).clip(lower=0.0, upper=1.0)
-        valid = values.notna()
-        weighted_sum.loc[valid] += values.loc[valid] * weight
-        weight_sum.loc[valid] += weight
-
-    add_weighted("Pred_Cell_prob", 0.35)
-    add_weighted("Pred_Animal_prob", 0.25, calibrated=True)
-    add_weighted("Pred_Clinical_prob", 0.40)
-
-    consensus = (weighted_sum / weight_sum).where(weight_sum > 0).dropna()
-    if consensus.empty:
-        return empty
-
-    evaluated_count = int(len(consensus))
-    denominator = _absorbed_count_value(absorbed_molecule_count_or_percent, evaluated_count)
-    if denominator <= 0:
-        denominator = evaluated_count
-    high_count = int((consensus >= threshold).sum())
-    enrichment = high_count / denominator if denominator else 0.0
-    risk_level, advice = _risk_from_enrichment(enrichment, denominator)
-
-    animal_raw = pd.to_numeric(work.get("Pred_Animal_prob", pd.Series(dtype=float)), errors="coerce")
-    animal_raw = animal_raw[animal_raw >= 0]
-    saturation_ratio = float((animal_raw >= 0.99).sum() / len(animal_raw)) if len(animal_raw) else 0.0
-    flags = ["animal_probability_saturation"] if saturation_ratio > 0.8 else []
-
-    return {
-        "Consensus_max_probability": round(float(consensus.max()), 4),
-        "Consensus_high_toxic_molecule_count": high_count,
-        "Consensus_enrichment_ratio": round(float(enrichment), 6),
-        "Consensus_risk_level": risk_level,
-        "Consensus_advice": advice,
-        "Consensus_toxic_probability_threshold": threshold,
-        "Consensus_evaluated_molecule_count": evaluated_count,
-        "Animal_probability_saturation_ratio": round(saturation_ratio, 6),
-        "Model_quality_flags": "、".join(flags),
-    }
-
-
 def build_summary_annotations(livertox_df, herb_candidates=None, absorbed_molecule_count_or_percent=None):
     candidates = []
     for value in herb_candidates or []:
         candidates.extend(_split_herb_names(value))
     annotations = {}
     annotations.update(_food_medicine_summary(candidates))
-    annotations.update(_consensus_summary(livertox_df, absorbed_molecule_count_or_percent))
+    annotations["Method_version"] = METHOD_VERSION
+    annotations["Blood_exposure_rule"] = "Reference_Match OR Bioavailability_Ma >= 0.3"
+    annotations["Cell_threshold"] = ENDPOINT_THRESHOLDS["cell"]
+    annotations["Animal_threshold"] = ENDPOINT_THRESHOLDS["animal"]
+    annotations["Clinical_threshold"] = ENDPOINT_THRESHOLDS["clinical"]
+    annotations["Candidate_rule"] = "Hepatotoxicity_Score >= 1"
+    annotations["Count_basis"] = "unique CID; standardized SMILES when CID is missing"
     return annotations
 
 
-def evaluate_tcm_formula(csv_path, smiles_col='Smiles'):
-    # print(f"\n[{csv_path}] 开始全景跨维度肝毒性评估...")
-    df = pd.read_csv(csv_path)
+def compound_keys(df):
+    cid = pd.to_numeric(df.get("CID", pd.Series(float("nan"), index=df.index)), errors="coerce")
+    structures = df["Standardized_SMILES"].fillna("") if "Standardized_SMILES" in df else df.get("Smiles", pd.Series("", index=df.index)).map(standardize_smiles).fillna("")
+    return pd.Series([f"CID:{int(c)}" if pd.notna(c) else (f"SMILES:{s}" if s else f"unresolved:{i}") for i, (c, s) in enumerate(zip(cid, structures))], index=df.index, dtype="str")
 
-    df['is_valid'] = df[smiles_col].apply(lambda x: pd.notna(x) and Chem.MolFromSmiles(x) is not None)
-    df = df[df['is_valid']].drop(columns=['is_valid']).reset_index(drop=True)
 
-    if len(df) == 0:
-        return print("未找到有效的SMILES结构，分析终止。")
-    com_num = len(df)
-    df['LogP'] = df[smiles_col].apply(lambda smi: round(Descriptors.MolLogP(Chem.MolFromSmiles(smi)), 2))
-    df['MW'] = df[smiles_col].apply(lambda smi: round(Descriptors.MolWt(Chem.MolFromSmiles(smi)), 2))
-    df['QED'] = df[smiles_col].apply(lambda smi: round(QED.qed(Chem.MolFromSmiles(smi)), 3))
-    if "Bioavailability_Ma" not in df.columns:
-        raise ValueError("入血判定结果缺少 Bioavailability_Ma 列。")
-    df['OB_Percent'] = pd.to_numeric(df["Bioavailability_Ma"], errors="coerce")
+def candidate_target_links(candidates, chemical_names, target_relations):
+    meta_cols = [c for c in ["CID", "ChemicalName", "Smiles", "Standardized_SMILES", "Compound_Key", "Source_Herbs", "Source_Formulas", "Herb.Chinese.name", "Formula.Chinese.name"] if c in candidates]
+    columns = list(dict.fromkeys(meta_cols + ["ChemicalName", "Symbol"]))
+    if candidates.empty:
+        return pd.DataFrame(columns=columns)
+    source = candidates[meta_cols].copy()
+    source["CID"] = pd.to_numeric(source.get("CID"), errors="coerce")
+    if "ChemicalName" not in source:
+        source["ChemicalName"] = None
+    source = source.rename(columns={"ChemicalName": "_candidate_name"})
+    aliases = chemical_names[["CID", "ChemicalName"]].copy()
+    aliases["CID"] = pd.to_numeric(aliases["CID"], errors="coerce")
+    aliases = aliases[aliases["CID"].notna()].drop_duplicates()
+    with_cid = source[source["CID"].notna()].merge(aliases, on="CID", how="left")
+    without_cid = source[source["CID"].isna()].copy()
+    without_cid["ChemicalName"] = without_cid["_candidate_name"]
+    links = pd.concat([with_cid, without_cid], ignore_index=True)
+    links["ChemicalName"] = links["ChemicalName"].fillna(links["_candidate_name"])
+    links = links.drop(columns="_candidate_name")
+    return links.merge(target_relations[["ChemicalName", "Symbol"]].drop_duplicates(), on="ChemicalName", how="inner").drop_duplicates().reset_index(drop=True)
 
-    # 阶段 B：联合入血过滤
-    pass_flags = []
-    for _, row in df.iterrows():
-        pass_pc = (
-            row.get("IntoBlood") == 1
-            and row['LogP'] <= 5.0
-            and row['MW'] <= 500
-            and row['QED'] >= 0.3
-            and pd.notna(row['OB_Percent'])
-            and row['OB_Percent'] > 0.3
-        )
-        pass_flags.append(pass_pc)
 
-    df['Is_Absorbed'] = pass_flags
-    absorbed_mols_count = sum(pass_flags)
-    # print(f"-> 符合联合标准 (入血) 分子数: {absorbed_mols_count}")
-
-    # 【核心】：初始化你要的 6 列输出，未入血成分全部标记为 -1
-    df['Pred_Cell_Toxicity'] = -1
-    df['Pred_Cell_prob'] = -1.0
-
-    df['Pred_Animal_Toxicity'] = -1
-    df['Pred_Animal_prob'] = -1.0
-
-    df['Pred_Clinical_Toxicity'] = -1
-    df['Pred_Clinical_prob'] = -1.0
-
-    df['Max_Tox_Prob'] = -1.0
-    TOXIC_THRESHOLD = 0.85
-    high_toxic_count = 0
-    enrichment_ratio = 0.0
-    risk_level = "🟢 低风险 (Safe)"
-    advise = "未检出满足入血与吸收条件的有效成分，建议结合实验数据复核。"
-
-    if absorbed_mols_count > 0:
-        # print("-> 正在启动多模型联合矩阵预测...")
-        models = load_models()
-
-        absorbed_indices = df[df['Is_Absorbed'] == True].index
-        absorbed_smiles = df.loc[absorbed_indices, smiles_col].tolist()
-
-        # 接收这 6 个返回值
-        (pred_cell, prob_cell,
-         pred_animal, prob_animal,
-         pred_clinical, prob_clinical) = predict_multimodel_pipeline(absorbed_smiles, models)
-
-        # 精准回填到 DataFrame 对应的行
-        df.loc[absorbed_indices, 'Pred_Cell_Toxicity'] = pred_cell
-        df.loc[absorbed_indices, 'Pred_Cell_prob'] = prob_cell
-
-        df.loc[absorbed_indices, 'Pred_Animal_Toxicity'] = pred_animal
-        df.loc[absorbed_indices, 'Pred_Animal_prob'] = prob_animal
-
-        df.loc[absorbed_indices, 'Pred_Clinical_Toxicity'] = pred_clinical
-        df.loc[absorbed_indices, 'Pred_Clinical_prob'] = prob_clinical
-
-        # 计算该分子的“最大潜在毒性概率”用于系统评估
-        df.loc[absorbed_indices, 'Max_Tox_Prob'] = np.max([prob_cell, prob_animal, prob_clinical], axis=0)
-
-        high_toxic_count = (df['Max_Tox_Prob'] >= TOXIC_THRESHOLD).sum()
-        enrichment_ratio = high_toxic_count / absorbed_mols_count
-
-        print("\n" + "="*50)
-        print(" 📊 方剂肝毒性系统生物学评估报告")
-        print("="*50)
-        print(f"▶ 原始检出有效分子数: {com_num}")
-        print(f"▶ 最终有效入血分子数: {absorbed_mols_count} (占总比 {absorbed_mols_count/com_num:.1%})")
-        print(f"▶ 高危肝毒分子数量 (任一层级 P >= {TOXIC_THRESHOLD}): {high_toxic_count}")
-        print(f"▶ 毒性成分体内综合富集率: {enrichment_ratio:.2%}")
-
-        if enrichment_ratio < 0.02:
-            risk_level = "🟢 低风险 (Safe)"
-            advise = "方剂整体肝毒性风险极低，可常规使用。"
-        elif 0.02 <= enrichment_ratio < 0.05:
-            risk_level = "🟡 中等风险 (Moderate Risk)"
-            advise = "存在肝毒性成分富集迹象，建议控制用量或辩证配伍。"
-        else:
-            risk_level = "🔴 高风险 (High Risk)"
-            advise = "系统性毒性富集率严重超标！存在多层级验证的药物性肝损伤(DILI)高风险。"
-
+def count_table(df, column, count_type, top_n=None):
+    columns = ["Count_Type", "Source_Column", "Item", "Count", "Raw_Record_Count", "Count_Basis"]
+    if df.empty or column not in df:
+        return pd.DataFrame(columns=columns)
+    work = df.copy()
+    is_target = column in ["TERM", "GOID", "GOTerm", "GOTermName", "PathwayName", "Pathwayid", "PathwayID"]
+    if is_target:
+        ids = work.get("ENTREZID", pd.Series("", index=work.index)).fillna("").astype(str).str.replace(r"\.0$", "", regex=True)
+        work["_entity"] = ids.mask(ids.eq(""), work.get("Symbol", pd.Series("", index=work.index))).fillna("")
     else:
-        print("\n🟢 所有成分均被体内屏障过滤，系统判定为安全。")
+        work["_entity"] = compound_keys(work)
+        unresolved = work["_entity"].str.startswith("unresolved:")
+        work.loc[unresolved, "_entity"] = work.get("ChemicalName", pd.Series("", index=work.index)).fillna("")[unresolved]
+    work = work[work["_entity"].ne("") & work[column].notna()].copy()
+    if column in ["Class", "Superclass", "Pathway"]:
+        work[column] = work[column].astype(str).str.split(r"[;,；|]")
+        work = work.explode(column)
+    work[column] = work[column].astype(str).str.strip()
+    work = work[work[column].ne("")]
+    counts = work.groupby(column)["_entity"].nunique().sort_values(ascending=False, kind="stable")
+    raw = work.groupby(column)["Raw_Record_Count"].sum() if "Raw_Record_Count" in work else work.groupby(column).size()
+    rows = [{"Count_Type": count_type, "Source_Column": column, "Item": name, "Count": int(count),
+             "Raw_Record_Count": int(raw[name]), "Count_Basis": "unique_target" if is_target else "unique_compound"} for name, count in counts.items()]
+    result = pd.DataFrame(rows, columns=columns)
+    return result.head(top_n) if top_n is not None else result
 
-    print(f"▶ 整体评价: {risk_level}")
-    if absorbed_mols_count > 0:
-        print(f"▶ 综合建议: {advise}")
-    # 返回数据集，原始检出有效分子数，最终有效入血分子数，高危肝毒分子数量，毒性成分体内综合富集率
-    return (df, com_num, f"{absorbed_mols_count} (占总比 {absorbed_mols_count/len(df):.1%})",TOXIC_THRESHOLD,
-            high_toxic_count,enrichment_ratio,risk_level,advise)
+
+def add_endpoint_scores(df, thresholds=None):
+    out = df.copy()
+    thresholds = thresholds or ENDPOINT_THRESHOLDS
+    columns = ["Pred_Cell_prob", "Pred_Animal_prob", "Pred_Clinical_prob"]
+    probabilities = out.reindex(columns=columns).apply(pd.to_numeric, errors="coerce")
+    probabilities = probabilities.where(probabilities.ge(0) & probabilities.le(1))
+    out[columns] = probabilities
+    evaluated = probabilities.notna().all(axis=1)
+    for endpoint, label in zip(ENDPOINT_THRESHOLDS, ["Cell", "Animal", "Clinical"]):
+        out[f"Pred_{label}_Toxicity"] = probabilities[f"Pred_{label}_prob"].ge(thresholds[endpoint]).astype(float).where(evaluated)
+    out["Hepatotoxicity_Score"] = out[["Pred_Cell_Toxicity", "Pred_Animal_Toxicity", "Pred_Clinical_Toxicity"]].sum(axis=1).where(evaluated)
+    out["Max_Tox_Prob"] = probabilities.max(axis=1).where(evaluated)
+    out["Positive_Endpoints"] = None
+    out["Endpoint_Combination"] = None
+    out["Pmax_Source"] = None
+    for idx in out.index[evaluated]:
+        positive = [endpoint for endpoint, label in zip(ENDPOINT_THRESHOLDS, ["Cell", "Animal", "Clinical"]) if out.at[idx, f"Pred_{label}_Toxicity"] == 1]
+        out.at[idx, "Positive_Endpoints"] = ";".join(positive)
+        out.at[idx, "Endpoint_Combination"] = "+".join(positive) or "none"
+        out.at[idx, "Pmax_Source"] = ";".join(endpoint for endpoint, column in zip(ENDPOINT_THRESHOLDS, columns) if probabilities.at[idx, column] == out.at[idx, "Max_Tox_Prob"])
+    return out
 
 
-    # # 导出包含你定义的 6 列字段的全景 CSV 文件
-    # output_filename = csv_path.replace('.csv', '_MultiModel_Results.csv')
-    # df.to_csv(output_filename, index=False)
-    # print(f"\n✅ 完整 6 项预测数据已保存至: {output_filename}")
-# %%
-# =======================================================
-# 5. 运行示例 (取消下方注释即可运行)
-# =======================================================
-if __name__ == '__main__':
-    evaluate_tcm_formula('L6810-TCM-2928.csv', smiles_col='Smiles')
+def evaluate_compounds(frame, models=None):
+    df = assess_blood_exposure(frame).reset_index(drop=True)
+    df["Standardized_SMILES"] = df["Smiles"].map(standardize_smiles)
+    df["Compound_Key"] = compound_keys(df)
+    df = df.drop_duplicates("Compound_Key").reset_index(drop=True)
+    df["is_valid_smiles"] = df["Standardized_SMILES"].notna()
+    for name, calculation, digits in [("LogP", Descriptors.MolLogP, 2), ("MW", Descriptors.MolWt, 2), ("QED", QED.qed, 3)]:
+        df[name] = df["Standardized_SMILES"].map(lambda smi: round(float(calculation(Chem.MolFromSmiles(smi))), digits) if isinstance(smi, str) and smi else float("nan"))
+    df["OB_Percent"] = df["Bioavailability_Ma"]
+    df["Is_Absorbed"] = df["IntoBlood"].eq(1).fillna(False) & df["is_valid_smiles"]
+    df["Assessment_Status"] = "not_evaluated"
+    df.loc[df["IntoBlood"].eq(0).fillna(False), "Assessment_Status"] = "screened_out"
+    df.loc[~df["is_valid_smiles"], "IntoBlood_Reason"] = "invalid_structure"
+    df.loc[~df["is_valid_smiles"], "IntoBlood"] = pd.NA
+    for label in ["Cell", "Animal", "Clinical"]:
+        df[f"Pred_{label}_prob"] = float("nan")
+    eligible = df.index[df["Is_Absorbed"]]
+    if len(eligible):
+        models = models if models is not None else load_models()
+        unique_smiles = df.loc[eligible, "Standardized_SMILES"].drop_duplicates().tolist()
+        outputs = predict_multimodel_pipeline(unique_smiles, models)
+        for label, probabilities in zip(["Cell", "Animal", "Clinical"], outputs[1::2]):
+            df.loc[eligible, f"Pred_{label}_prob"] = df.loc[eligible, "Standardized_SMILES"].map(dict(zip(unique_smiles, probabilities)))
+        df.loc[eligible, "Assessment_Status"] = "evaluated"
+    thresholds = {bundle["endpoint"]: round(float(bundle["threshold"]), 12) for bundle in models} if models is not None else ENDPOINT_THRESHOLDS
+    return add_endpoint_scores(df, thresholds)
+
+
+def prediction_summary(df):
+    from itertools import product
+    work = df.copy()
+    work["Compound_Key"] = compound_keys(work)
+    work = work.drop_duplicates("Compound_Key")
+    evaluated = work[work["Hepatotoxicity_Score"].notna()]
+    total, count = len(work), len(evaluated)
+    probs = {endpoint: (float(evaluated[f"Pred_{label}_prob"].max()) if count else None) for endpoint, label in zip(ENDPOINT_THRESHOLDS, ["Cell", "Animal", "Clinical"])}
+    probs["max"] = float(evaluated["Max_Tox_Prob"].max()) if count else None
+    reasons = work.get("IntoBlood_Reason", pd.Series("missing_admet", index=work.index))
+    missing_count = int(reasons.isin(["invalid_structure", "missing_admet", "not_in_reference"]).sum())
+    candidate_count = int(evaluated["Hepatotoxicity_Score"].ge(1).sum())
+    pmax_rows = evaluated[evaluated["Max_Tox_Prob"].eq(probs["max"])] if count else evaluated
+    sources = [{"CID": None if pd.isna(row.get("CID")) else int(row["CID"]), "name": str(row.get("ChemicalName") or row.get("Compound_Key")), "endpoints": str(row["Pmax_Source"]).split(";")} for row in pmax_rows.to_dict("records")]
+    summary = {
+        "total_compounds": total, "valid_smiles_count": int(work.get("is_valid_smiles", work.get("Smiles", pd.Series("", index=work.index)).map(lambda value: isinstance(value, str) and Chem.MolFromSmiles(value) is not None)).sum()),
+        "intoblood_count": int(work["IntoBlood"].eq(1).sum()), "absorbed_count": count, "evaluated_count": count,
+        "not_evaluated_count": total - count, "insufficient_data_count": missing_count,
+        "screened_out_count": int(reasons.eq("admet_below_0.3").sum()),
+        "reference_match_count": int(reasons.eq("reference_match").sum()), "admet_pass_count": int(reasons.eq("admet_ge_0.3").sum()),
+        "high_toxic_count": candidate_count, "candidate_count": candidate_count,
+        "candidate_ratio": candidate_count / count if count else None,
+        "max_toxic_probability": probs["max"], "pmax_contributors": sources,
+        "assessment_status": "not_evaluable" if not count else ("partial" if missing_count else "completed"),
+        "risk_level": "unassessed" if not count else "screening",
+        "risk_label": "无法评估" if not count else ("部分完成" if missing_count else "筛查完成"),
+        "method_version": METHOD_VERSION, "endpoint_thresholds": ENDPOINT_THRESHOLDS,
+        "candidate_rule": "Hepatotoxicity_Score >= 1", "count_basis": "unique_compounds",
+        "advice": "Pmax 为成分集合中的最大模型输出，0–3 分表示阳性端点数量；均不代表临床肝损伤发生率或安全性结论。",
+    }
+    endpoints = list(ENDPOINT_THRESHOLDS)
+    combinations = ["+".join(e for e, bit in zip(endpoints, bits) if bit) or "none" for bits in product([0, 1], repeat=3)]
+    statistics = {
+        "endpoint_counts": [{"endpoint": e, "positive": int(evaluated[f"Pred_{label}_Toxicity"].eq(1).sum()), "negative": int(evaluated[f"Pred_{label}_Toxicity"].eq(0).sum())} for e, label in zip(endpoints, ["Cell", "Animal", "Clinical"])],
+        "combination_counts": [{"name": name, "count": int(evaluated["Endpoint_Combination"].eq(name).sum())} for name in combinations],
+        "score_counts": [{"score": score, "count": int(evaluated["Hepatotoxicity_Score"].eq(score).sum())} for score in range(4)],
+        "pmax_source_counts": [{"name": name, "count": int(evaluated["Pmax_Source"].eq(name).sum())} for name in endpoints] + [{"name": "tied", "count": int(evaluated["Pmax_Source"].fillna("").astype(str).str.contains(";", na=False).sum())}],
+    }
+    return summary, probs, statistics
+
+
+def evaluate_tcm_formula(csv_path, smiles_col="Smiles"):
+    frame = pd.read_csv(csv_path).rename(columns={smiles_col: "Smiles"})
+    df = evaluate_compounds(frame)
+    valid_count = int(df["is_valid_smiles"].sum())
+    evaluated_count = int(df["Assessment_Status"].eq("evaluated").sum())
+    candidate_count = int(df["Hepatotoxicity_Score"].ge(1).sum())
+    ratio = candidate_count / evaluated_count if evaluated_count else None
+    label = "筛查完成" if evaluated_count else "无法评估"
+    advice = "Pmax 为成分集合中的最大模型输出，0–3 分表示阳性端点数量；均不代表临床肝损伤发生率或安全性结论。"
+    return df, valid_count, evaluated_count, 1, candidate_count, ratio, label, advice
+
+
+if __name__ == "__main__":
+    evaluate_tcm_formula("L6810-TCM-2928.csv")

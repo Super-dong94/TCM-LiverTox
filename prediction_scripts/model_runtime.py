@@ -12,8 +12,40 @@ import torch.nn as nn
 import torch.nn.functional as F
 from rdkit import Chem
 from rdkit.Chem import Descriptors, MACCSkeys, rdFingerprintGenerator
+from rdkit.Chem.MolStandardize import rdMolStandardize
 from torch_geometric.data import Batch, Data
 from torch_geometric.nn import GCNConv, GINEConv, global_max_pool, global_mean_pool
+
+
+ENDPOINT_THRESHOLDS = {"cell": 0.55, "animal": 0.96, "clinical": 0.64}
+METHOD_VERSION = "manuscript-20260922"
+
+
+def standardize_smiles(smiles: Any) -> str | None:
+    if not isinstance(smiles, str) or not smiles.strip():
+        return None
+    mol = Chem.MolFromSmiles(smiles.strip())
+    if mol is None:
+        return None
+    try:
+        mol = rdMolStandardize.LargestFragmentChooser().choose(mol)
+        mol = rdMolStandardize.Uncharger().uncharge(mol)
+        Chem.SanitizeMol(mol)
+        return Chem.MolToSmiles(mol, canonical=True, isomericSmiles=True)
+    except (ValueError, RuntimeError):
+        return None
+
+
+def model_metadata(bundles) -> dict[str, Any]:
+    return {
+        bundle["endpoint"]: {
+            "name": bundle["selected_model"],
+            "threshold": round(float(bundle["threshold"]), 12),
+            "calibration_method": bundle.get("ensemble_calibration_method", bundle.get("entry", {}).get("calibration_method", "none")),
+            "feature_count": bundle["feature_schema"]["feature_count"],
+        }
+        for bundle in bundles
+    }
 
 
 class FingerprintMLP(nn.Module):
@@ -264,6 +296,9 @@ def predict_model_bundle(
 ) -> tuple[np.ndarray, np.ndarray]:
     if not smiles_list:
         return np.asarray([], dtype=int), np.asarray([], dtype=float)
+    smiles_list = [standardize_smiles(value) for value in smiles_list]
+    if any(value is None for value in smiles_list):
+        raise ValueError("存在无法标准化的 SMILES。")
     vector_values = _vector_features(smiles_list, bundle)
     mode = bundle["mode"]
     if mode == "base":
@@ -286,7 +321,7 @@ def predict_model_bundle(
             bundle["ensemble_calibrator"],
             bundle["ensemble_calibration_method"],
         )
-    threshold = float(bundle["threshold"])
+    threshold = round(float(bundle["threshold"]), 12)
     predictions = (probabilities >= threshold).astype(int)
     return predictions, np.asarray(probabilities, dtype=float)
 

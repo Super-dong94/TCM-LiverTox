@@ -1,23 +1,29 @@
 {
-  "schema_version": "1",
-  "calibration_status": "embedded",
-  "calibration_version": "model_bundle_artifact_v1",
+  "schema_version": "2",
+  "calibration_status": "endpoint_specific",
+  "calibration_version": "manuscript-20260922",
   "models": [
     {
       "name": "cell",
       "file_name": "01best_model_tuned.joblib",
-      "status": "embedded"
+      "status": "none",
+      "calibration_method": "none",
+      "threshold": 0.55
     },
     {
       "name": "animal",
       "file_name": "02best_model_tuned.joblib",
-      "status": "embedded"
+      "status": "embedded",
+      "calibration_method": "sigmoid",
+      "threshold": 0.96
     },
     {
       "name": "clinical",
       "file_name": "03best_model_tuned.joblib",
-      "status": "embedded"
+      "status": "none",
+      "calibration_method": "none",
+      "threshold": 0.64
     }
   ],
-  "note": "Each model bundle contains its fitted calibrator and endpoint-specific decision threshold."
+  "note": "Cell Stacking: no additional ensemble calibration; animal BalancedRandomForest: sigmoid; clinical RandomForest: no additional calibration. Model preprocessing, feature order and endpoint thresholds are taken from the saved bundles."
 }

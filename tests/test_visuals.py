@@ -524,7 +524,7 @@ def test_large_disease_section_streams_and_uses_manifest(tmp_path, monkeypatch) 
 
     assert page["section"]["row_count"] == 3
     assert page["section"]["total_pages"] == 2
-    assert page["records"][0]["DiseaseName"] == "Drug-induced liver injury"
+    assert page["records"][0]["DiseaseName"] == "Kidney injury"  # 相同成分数不按疾病关键词加权
     json.dumps(page, ensure_ascii=False, allow_nan=False)
 
 
@@ -556,7 +556,7 @@ def test_disease_section_page_rebuilds_target_disease_links(tmp_path) -> None:
         page_size=10,
     )
 
-    assert page["headers"] == ["ChemicalName", "ENTREZID", "Symbol", "DiseaseName", "DiseaseID"]
+    assert page["headers"] == ["ChemicalName", "ENTREZID", "Symbol", "DiseaseName", "DiseaseID", "Raw_Record_Count"]
     assert "GeneID" not in page["headers"]
     assert "GeneSymbol" not in page["headers"]
     record = page["records"][0]
@@ -596,7 +596,7 @@ def test_disease_section_page_fills_chemical_name_from_compound_target(tmp_path)
     )
 
     record = page["records"][0]
-    assert page["headers"] == ["ChemicalName", "ENTREZID", "Symbol", "DiseaseName", "DiseaseID"]
+    assert page["headers"] == ["ChemicalName", "ENTREZID", "Symbol", "DiseaseName", "DiseaseID", "Raw_Record_Count"]
     assert record["ChemicalName"] == "Emodin"
     assert record["ENTREZID"] == "1576"
     assert record["Symbol"] == "CYP3A4"
@@ -633,7 +633,7 @@ def test_disease_section_page_fills_entrez_from_target_disease_source(tmp_path) 
     )
 
     record = page["records"][0]
-    assert page["headers"] == ["ChemicalName", "ENTREZID", "Symbol", "DiseaseName", "DiseaseID"]
+    assert page["headers"] == ["ChemicalName", "ENTREZID", "Symbol", "DiseaseName", "DiseaseID", "Raw_Record_Count"]
     assert record["ChemicalName"] == "Emodin"
     assert record["ENTREZID"] == "1576"
     assert record["Symbol"] == "CYP3A4"
@@ -670,9 +670,58 @@ def test_disease_section_page_fills_chemical_name_from_entrez_only_target(tmp_pa
     )
 
     record = page["records"][0]
-    assert page["headers"] == ["ChemicalName", "ENTREZID", "Symbol", "DiseaseName", "DiseaseID"]
+    assert page["headers"] == ["ChemicalName", "ENTREZID", "Symbol", "DiseaseName", "DiseaseID", "Raw_Record_Count"]
     assert record["ChemicalName"] == "Emodin"
     assert record["ENTREZID"] == "1576"
     assert record["Symbol"] == "CYP3A4"
     assert record["DiseaseName"] == "Drug-induced liver injury"
     assert record["DiseaseID"] == "MESH:D056486"
+
+
+def test_association_counts_use_unique_entities_and_keep_raw_frequency():
+    targets = pd.DataFrame({"CID": [1, 1, 2], "ChemicalName": ["A", "A", "B"], "Symbol": ["T", "T", "T"]})
+    assert HepatotoxicityPredictor._association_counts(targets, "Symbol", "compound")[0]["count"] == 2
+    pathways = pd.DataFrame({"PathwayName": ["P", "P", "P"], "ENTREZID": [1, 1, 2]})
+    assert HepatotoxicityPredictor._association_counts(pathways, "PathwayName", "target")[0]["count"] == 2
+    diseases = targets.assign(DiseaseName="D", Raw_Record_Count=[2, 3, 4])
+    counts = HepatotoxicityPredictor._association_counts(diseases, "DiseaseName", "compound")[0]
+    assert counts["count"] == 2 and counts["raw_record_count"] == 9
+
+
+def test_external_empty_assessment_keeps_exportable_headers_and_nulls(tmp_path, monkeypatch):
+    from prediction_scripts.formula_livertox_pred import evaluate_compounds
+    write_minimal_data_files(tmp_path)
+    predictor = HepatotoxicityPredictor(tmp_path)
+    config = predictor_module.EXTERNAL_PREDICTION_CONFIG["compound"]
+    output = tmp_path / "output"
+    output.mkdir()
+    for _, filename in config["overview_files"]:
+        pd.DataFrame(columns=["note"]).to_csv(output / filename, index=False)
+    frame = evaluate_compounds(pd.DataFrame({"CID": [15945058], "ChemicalName": ["Emodin"], "Smiles": ["C"], "Reference_Match": [False], "Bioavailability_Ma": [.2]}))
+    frame.to_csv(output / config["livertox_file"], index=False)
+    for section, (_, filename) in config["tab_files"].items():
+        (frame.iloc[:0] if section == "toxic_compounds" else pd.DataFrame(columns=["ChemicalName", "Symbol"])).to_csv(output / filename, index=False)
+    monkeypatch.setattr(predictor, "_load_models", lambda: ())
+    monkeypatch.setattr(predictor_module, "model_metadata", lambda _: {})
+    result = predictor._build_external_prediction_response("compound", ["15945058"], output, config, job_id="empty")
+    assert result["summary"]["assessment_status"] == "not_evaluable"
+    assert all(value is None for value in result["probabilities"].values())
+    assert result["compounds"][0]["Max_Tox_Prob"] is None
+    assert all(row["row_count"] == 0 for row in result["sections"] if row["id"].startswith("toxic_"))
+    for _, filename in config["tab_files"].values():
+        assert len(pd.read_csv(output / filename).columns) > 0
+    json.dumps(result, allow_nan=False)
+
+
+def test_disease_raw_frequency_retains_source_duplicates(tmp_path):
+    write_minimal_data_files(tmp_path)
+    path = tmp_path / "data/08_target_disease.csv"
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write("CYP3A4,1576,Drug-induced liver injury,MESH:D056486\n")
+    predictor = HepatotoxicityPredictor(tmp_path)
+    targets = pd.DataFrame({"CID": [15945058, 15945058], "ChemicalName": ["Emodin", "Emodin alias"], "Symbol": ["CYP3A4", "CYP3A4"], "ENTREZID": [1576, 1576]})
+    links = predictor._target_disease_frame_from_targets(targets)
+    assert len(links) == 1
+    assert links.iloc[0]["Raw_Record_Count"] == 2
+    counts = predictor._association_counts(links, "DiseaseName", "compound")[0]
+    assert counts["count"] == 1 and counts["raw_record_count"] == 2

@@ -26,8 +26,11 @@ from rdkit import Chem, RDLogger
 from rdkit.Chem import Descriptors, QED
 
 from prediction_scripts.intoblood_pred import match_intoblood_reference
+from prediction_scripts.formula_livertox_pred import evaluate_compounds, prediction_summary, compound_keys, add_endpoint_scores, count_table, candidate_target_links
 from prediction_scripts.model_runtime import (
     load_model_bundles,
+    model_metadata,
+    METHOD_VERSION,
     predict_multimodel_pipeline as predict_model_bundles,
 )
 
@@ -218,7 +221,7 @@ SECTION_CORE_COLUMNS: dict[str, list[str]] = {
     "toxic_diseases": ["ChemicalName", "ENTREZID", "Symbol", "DiseaseName", "DiseaseID"],
 }
 
-PREDICTION_RESPONSE_SCHEMA_VERSION = "toxherb-response-20260730-reference-match-v6"
+PREDICTION_RESPONSE_SCHEMA_VERSION = "toxherb-response-20260922-manuscript-v7"
 
 
 def _copy_column_aliases(
@@ -287,7 +290,7 @@ def _normalize_relation_output_frame(df: pd.DataFrame, section_id: str | None = 
         for column in core_columns:
             if column not in out.columns:
                 out[column] = pd.NA
-        out = out[core_columns]
+        out = out[core_columns + [c for c in ("CID", "Smiles", "Standardized_SMILES", "Raw_Record_Count") if c in out and c not in core_columns]]
     return out
 
 
@@ -474,7 +477,7 @@ EXTERNAL_PREDICTION_CONFIG: dict[str, dict[str, Any]] = {
             ("综合统计结果", "11_consolidated_count_summary.csv"),
         ],
         "tab_files": {
-            "toxic_compounds": ("高危肝毒成分明细", "06_high_toxic_chemicals_master.csv"),
+            "toxic_compounds": ("阳性候选成分明细", "06_high_toxic_chemicals_master.csv"),
             "toxic_targets": ("毒性成分对应靶标", "07_high_toxic_chemical_targets.csv"),
             "toxic_pathways": ("毒性靶标-信号通路关系", "08_high_toxic_target_pathways.csv"),
             "toxic_go": ("毒性靶标-GO术语关系", "09_high_toxic_target_GO_terms.csv"),
@@ -496,7 +499,7 @@ EXTERNAL_PREDICTION_CONFIG: dict[str, dict[str, Any]] = {
             ("综合统计结果", "11_consolidated_count_summary.csv"),
         ],
         "tab_files": {
-            "toxic_compounds": ("高危肝毒成分明细", "06_high_toxic_chemicals_master.csv"),
+            "toxic_compounds": ("阳性候选成分明细", "06_high_toxic_chemicals_master.csv"),
             "toxic_targets": ("毒性成分对应靶标", "07_high_toxic_chemical_targets.csv"),
             "toxic_pathways": ("毒性靶标-信号通路关系", "08_high_toxic_target_pathways.csv"),
             "toxic_go": ("毒性靶标-GO术语关系", "09_high_toxic_target_GO_terms.csv"),
@@ -518,7 +521,7 @@ EXTERNAL_PREDICTION_CONFIG: dict[str, dict[str, Any]] = {
             ("综合统计结果", "12_consolidated_count_summary.csv"),
         ],
         "tab_files": {
-            "toxic_compounds": ("高危肝毒成分明细", "06_high_toxic_chemicals_master.csv"),
+            "toxic_compounds": ("阳性候选成分明细", "06_high_toxic_chemicals_master.csv"),
             "toxic_targets": ("毒性成分对应靶标", "07_high_toxic_chemical_targets.csv"),
             "toxic_pathways": ("毒性靶标-信号通路关系", "08_high_toxic_target_pathways.csv"),
             "toxic_go": ("毒性靶标-GO术语关系", "09_high_toxic_target_GO_terms.csv"),
@@ -1183,7 +1186,10 @@ class HepatotoxicityPredictor:
         if not path.exists():
             raise PredictionError(f"预测输出缺少 CSV 文件: {path}", status_code=500)
         kwargs.setdefault("low_memory", False)
-        return _read_csv(path, **kwargs)
+        try:
+            return _read_csv(path, **kwargs)
+        except pd.errors.EmptyDataError:
+            return pd.DataFrame()
 
     def _section_from_csv(self, title: str, path: Path, section_id: str | None = None) -> dict[str, Any]:
         preview_limit = EXTERNAL_CSV_SECTION_ROW_LIMIT
@@ -1282,6 +1288,7 @@ class HepatotoxicityPredictor:
         symbols: Iterable[str],
         entrez_ids: Iterable[Any] | None = None,
         limit: int | None = None,
+        retain_frequency: bool = False,
     ) -> pd.DataFrame:
         keys = sorted({self._symbol_key(symbol) for symbol in symbols if self._symbol_key(symbol)})
         entrez_keys = sorted({str(_identifier_text(value) or "").strip() for value in (entrez_ids or []) if str(_identifier_text(value) or "").strip()})
@@ -1306,7 +1313,7 @@ class HepatotoxicityPredictor:
             matched = chunk[mask].copy()
             if matched.empty:
                 continue
-            selected = self._select_columns(matched, columns)
+            selected = matched.reindex(columns=columns).copy() if retain_frequency else self._select_columns(matched, columns)
             selected = _drop_blank_relation_rows(selected, ["DiseaseName", "DiseaseID"])
             if selected.empty:
                 continue
@@ -1316,7 +1323,11 @@ class HepatotoxicityPredictor:
                 break
         if not frames:
             return pd.DataFrame(columns=columns)
-        out = pd.concat(frames, ignore_index=True).drop_duplicates()
+        out = pd.concat(frames, ignore_index=True)
+        if retain_frequency:
+            out = out.groupby(columns, dropna=False).size().reset_index(name="Raw_Record_Count")
+        else:
+            out = out.drop_duplicates()
         return out.head(limit).copy() if limit is not None else out
 
     def _fill_target_link_chemical_names(self, target_links: pd.DataFrame) -> pd.DataFrame:
@@ -1341,7 +1352,7 @@ class HepatotoxicityPredictor:
                 )
                 out = pd.concat([out.loc[~missing_symbol], symbol_filled], ignore_index=True, sort=False)
 
-        out = self._select_columns(out, ["ChemicalName", "Symbol", "ENTREZID"])
+        out = self._select_columns(out, ["CID", "Smiles", "Standardized_SMILES", "ChemicalName", "Symbol", "ENTREZID"])
         missing_mask = _blank_mask(out["ChemicalName"])
         if not missing_mask.any():
             return out[~_blank_mask(out["Symbol"])].drop_duplicates().reset_index(drop=True)
@@ -1415,15 +1426,18 @@ class HepatotoxicityPredictor:
     def _target_disease_frame_from_targets(self, target_df: pd.DataFrame, fallback_df: pd.DataFrame | None = None) -> pd.DataFrame:
         fallback_source = fallback_df if fallback_df is not None else pd.DataFrame()
         fallback = _filter_toxic_disease_rows(fallback_source)
-        target_links = self._select_columns(target_df, ["ChemicalName", "Symbol", "ENTREZID"])
+        target_links = self._select_columns(target_df, ["CID", "Smiles", "Standardized_SMILES", "ChemicalName", "Symbol", "ENTREZID"]).drop_duplicates()
         target_links = self._fill_target_identifiers(target_links)
         target_links = self._fill_target_link_chemical_names(target_links)
+        if "CID" in target_links or "Smiles" in target_links:
+            target_links["_compound_key"] = compound_keys(target_links)
+            target_links = target_links.drop_duplicates(["_compound_key", "Symbol", "ENTREZID"]).drop(columns="_compound_key")
         if target_links.empty or "Symbol" not in target_links.columns:
             return fallback
         symbols = target_links["Symbol"].dropna().astype(str).unique().tolist()
         entrez_ids = target_links["ENTREZID"].dropna().astype(str).unique().tolist() if "ENTREZID" in target_links.columns else []
         try:
-            disease_rows = self._disease_rows_for_symbols(symbols)
+            disease_rows = self._disease_rows_for_symbols_from_data_file(symbols, entrez_ids, retain_frequency=True)
             disease_rows = _drop_blank_relation_rows(disease_rows, ["DiseaseName", "DiseaseID"])
         except (PredictionError, OSError, sqlite3.Error):
             disease_rows = pd.DataFrame(columns=["Symbol", "ENTREZID", "DiseaseName", "DiseaseID"])
@@ -1443,7 +1457,7 @@ class HepatotoxicityPredictor:
             left["ENTREZID"] = left["ENTREZID"].map(_identifier_text)
             right["ENTREZID"] = right["ENTREZID"].map(_identifier_text)
             links = left.merge(right, on="ENTREZID", how="inner", suffixes=("", "_disease"))
-        links = self._select_columns(links, SECTION_CORE_COLUMNS["toxic_diseases"])
+        links = _normalize_relation_output_frame(links, "toxic_diseases")
         links = _filter_toxic_disease_rows(links)
         if links.empty:
             return fallback
@@ -1484,6 +1498,32 @@ class HepatotoxicityPredictor:
         pathway_display_df = _normalize_relation_output_frame(pathway_df, "toxic_pathways")
         go_display_df = _normalize_relation_output_frame(go_df, "toxic_go")
         disease_display_df = _normalize_relation_output_frame(disease_df, "toxic_diseases")
+        for section_id, frame in [("toxic_compounds", high_toxic_df), ("toxic_targets", target_df), ("toxic_pathways", pathway_display_df), ("toxic_go", go_display_df), ("toxic_diseases", disease_display_df)]:
+            frame.to_csv(output_dir / config["tab_files"][section_id][1], index=False, encoding="utf-8-sig")
+
+        # 从完整规范结果重建汇总，分页预览不参与统计。
+        summary, probabilities, statistics = prediction_summary(livertox_df)
+        livertox_df.to_csv(output_dir / config["livertox_file"], index=False, encoding="utf-8-sig")
+        summary_record = {key: json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else value for key, value in summary.items()}
+        pd.DataFrame([summary_record]).to_csv(output_dir / config["summary_file"], index=False, encoding="utf-8-sig")
+        count_frames = [count_table(frame, column, kind) for frame, column, kind in [
+            (high_toxic_df, "Class", "Candidate_class"), (high_toxic_df, "Superclass", "Candidate_superclass"),
+            (high_toxic_df, "Pathway", "Candidate_chemical_pathway"), (target_df, "Symbol", "Candidate_target"),
+            (pathway_df, "PathwayName", "Candidate_pathway"), (go_df, "TERM", "Candidate_GO"), (disease_df, "DiseaseName", "Candidate_disease")]]
+        for _, filename in config["overview_files"]:
+            if "consolidated_count_summary" in filename:
+                pd.concat(count_frames, ignore_index=True).to_csv(output_dir / filename, index=False, encoding="utf-8-sig")
+        manifest_path = output_dir / "00_output_file_manifest.csv"
+        if manifest_path.exists():
+            manifest = self._read_external_csv(manifest_path)
+            for index, row in manifest.iterrows():
+                filename = row.get("FileName", row.get("RelativePath", ""))
+                source = output_dir / Path(str(filename)).name
+                if source.is_file() and source != manifest_path and source.suffix == ".csv":
+                    manifest.at[index, "Rows"] = self._csv_row_count(source)
+                    manifest.at[index, "Columns"] = len(self._read_external_csv(source, nrows=0).columns)
+                    manifest.at[index, "Size_MB"] = round(source.stat().st_size / 1024**2, 4)
+            manifest.to_csv(manifest_path, index=False, encoding="utf-8-sig")
 
         csv_sections: dict[str, list[dict[str, Any]]] = {
             "overview": [
@@ -1533,64 +1573,12 @@ class HepatotoxicityPredictor:
             }
         ]
 
-        summary_row = summary_df.iloc[0].to_dict() if not summary_df.empty else {}
-        probabilities = {
-            "cell": self._numeric_max(livertox_df, "Pred_Cell_prob"),
-            "animal": self._numeric_max(livertox_df, "Pred_Animal_prob"),
-            "clinical": self._numeric_max(livertox_df, "Pred_Clinical_prob"),
-            "max": self._numeric_max(livertox_df, "Max_Tox_Prob"),
-        }
-        threshold = self._float_value(summary_row.get("Toxic_probability_threshold"), 0.85)
-        high_count = self._int_value(summary_row.get("High_toxic_molecule_count"), len(high_toxic_df))
-        enrichment = self._float_value(summary_row.get("Toxic_enrichment_ratio"), 0.0)
-        absorbed_count = self._absorbed_count(summary_row.get("Absorbed_molecule_count_or_percent"))
-        risk_label = str(summary_row.get("Risk_level") or "已完成")
-        intoblood_count = (
-            int((pd.to_numeric(livertox_df["IntoBlood"], errors="coerce") == 1).sum())
-        if "IntoBlood" in livertox_df.columns
-            else 0
-        )
+        summary, probabilities, statistics = prediction_summary(livertox_df)
         herb_candidates = self._summary_herb_candidates(query_type, query, trace_details or {}, livertox_df)
-        food_medicine_homology = self._food_medicine_homology_summary(herb_candidates)
-        consensus_reference = self._consensus_reference(livertox_df, absorbed_count)
-        confidence_profile = self._build_confidence_profile(livertox_df, summary_row, probabilities)
-        domain_profile = self._build_applicability_domain(livertox_df)
-        top_compound_names = self._top_names(high_toxic_df, "ChemicalName", "compound_priority_score", 8)
-        top_target_names = self._top_names(target_df, "Symbol", "target_priority_score", 8)
-        top_pathway_names = self._top_names(pathway_df, "PathwayName", "pathway_priority_score", 8)
-
-        summary = {
-            "total_compounds": int(len(livertox_df)),
-            "valid_smiles_count": self._int_value(summary_row.get("Original_valid_molecule_count"), int(len(livertox_df))),
-            "intoblood_count": intoblood_count,
-            "absorbed_count": absorbed_count,
-            "toxic_threshold": threshold,
-            "high_toxic_count": high_count,
-            "enrichment_ratio": enrichment,
-            "max_toxic_probability": probabilities["max"],
-            "raw_max_toxic_probability": probabilities["max"],
-            "calibrated_max_toxic_probability": probabilities["max"],
-            "calibration_status": "embedded",
-            "calibration_version": "model_bundle_artifact_v1",
-            "confidence_level": confidence_profile["confidence_level"],
-            "confidence_score": confidence_profile["confidence_score"],
-            "confidence_reasons": confidence_profile["confidence_reasons"],
-            "domain_label": domain_profile["domain_label"],
-            "domain_coverage": domain_profile["domain_coverage"],
-            "exposure_weighted_risk": self._exposure_weighted_risk(livertox_df),
-            "top_compound_names": top_compound_names,
-            "top_target_names": top_target_names,
-            "top_pathway_names": top_pathway_names,
-            "disclaimer": DISCLAIMER_TEXT,
-            "risk_level": self._risk_level_from_label(risk_label),
-            "risk_label": risk_label,
-            "advice": str(summary_row.get("Advice") or "无"),
-            "output_dir": str(output_dir),
-            "food_medicine_homology": food_medicine_homology,
-            "consensus_reference": consensus_reference,
-        }
-        summary["confidence_profile"] = confidence_profile
-        summary["applicability_domain"] = domain_profile
+        summary["food_medicine_homology"] = self._food_medicine_homology_summary(herb_candidates)
+        summary["disclaimer"] = DISCLAIMER_TEXT
+        summary["output_dir"] = str(output_dir)
+        models_info = model_metadata(self._load_models())
 
         high_records = self._records_from_external_df(high_toxic_df, EXTERNAL_RESPONSE_RECORD_LIMIT)
         target_records = self._records_from_external_df(target_df, EXTERNAL_RESPONSE_RECORD_LIMIT)
@@ -1619,14 +1607,17 @@ class HepatotoxicityPredictor:
             "query": query,
             "summary": summary,
             "probabilities": probabilities,
+            "model_metadata": models_info,
+            "prediction_statistics": statistics,
             "context": {"output_dir": str(output_dir)},
             "warnings": [],
-            "class_counts": self._count_records(high_toxic_df, "Class"),
-            "superclass_counts": self._count_records(high_toxic_df, "Superclass"),
-            "pathway_family_counts": self._count_records(high_toxic_df, "Pathway"),
-            "target_counts": self._count_records(target_df, "Symbol"),
-            "pathway_counts": self._count_records(pathway_df, "PathwayName"),
-            "go_counts": self._count_records(go_df, "TERM"),
+            "class_counts": self._taxonomy_counts(high_toxic_df, "Class"),
+            "superclass_counts": self._taxonomy_counts(high_toxic_df, "Superclass"),
+            "pathway_family_counts": self._taxonomy_counts(high_toxic_df, "Pathway"),
+            "target_counts": self._association_counts(target_df, "Symbol", "compound"),
+            "pathway_counts": self._association_counts(pathway_df, "PathwayName", "target"),
+            "go_counts": self._association_counts(go_df, "TERM", "target"),
+            "disease_counts": self._association_counts(disease_df, "DiseaseName", "compound"),
             "high_risk_compounds": high_records,
             "compounds": self._records_from_external_df(livertox_df, EXTERNAL_COMPOUND_RECORD_LIMIT),
             "trace_details": trace_details or {},
@@ -1739,24 +1730,37 @@ class HepatotoxicityPredictor:
     def _add_compound_priority(self, df: pd.DataFrame) -> pd.DataFrame:
         if df.empty:
             return df.copy()
-        out = df.copy()
-        risk = self._numeric_series(out, "Max_Tox_Prob")
-        bioavailability = self._numeric_series(out, "Bioavailability_Ma")
-        intoblood = self._numeric_series(out, "IntoBlood")
-        absorbed = self._numeric_series(out, "Is_Absorbed")
-        source_count = self._source_count_series(out)
-        domain_score = self._domain_score_series(out)
-        out["domain_label"] = self._domain_label_series(out)
-        out["domain_score"] = domain_score.round(4)
-        out["compound_priority_score"] = (
-            risk.fillna(0) * 0.45
-            + bioavailability.fillna(0) * 0.15
-            + intoblood.fillna(0).clip(0, 1) * 0.12
-            + absorbed.fillna(0).clip(0, 1) * 0.12
-            + source_count.fillna(0).clip(0, 8) / 8 * 0.08
-            + domain_score.fillna(0.5) * 0.08
-        ).round(4)
-        return out.sort_values("compound_priority_score", ascending=False)
+        return df.sort_values("Max_Tox_Prob", ascending=False, na_position="last").copy() if "Max_Tox_Prob" in df else df.copy()
+
+    @staticmethod
+    def _association_counts(df: pd.DataFrame, column: str, unit: str, limit: int = 20) -> list[dict[str, Any]]:
+        if df.empty or column not in df:
+            return []
+        work = df[df[column].notna() & df[column].astype(str).str.strip().ne("")].copy()
+        if unit == "compound":
+            work["_entity"] = compound_keys(work)
+            unresolved = work["_entity"].str.startswith("unresolved:")
+            names = work.get("ChemicalName", pd.Series("", index=work.index)).fillna("").astype(str).str.casefold()
+            work.loc[unresolved, "_entity"] = names[unresolved]
+        else:
+            ids = work.get("ENTREZID", pd.Series(index=work.index, dtype=str)).map(_identifier_text).fillna("").astype(str)
+            work["_entity"] = ids.mask(ids.eq(""), work.get("Symbol", pd.Series("", index=work.index))).fillna("").astype(str)
+        work = work[work["_entity"].ne("")]
+        counts = work.groupby(column)["_entity"].nunique().sort_values(ascending=False, kind="stable").head(limit)
+        raw = work.groupby(column)["Raw_Record_Count"].sum() if "Raw_Record_Count" in work else work.groupby(column).size()
+        return [{"name": str(name), "count": int(count), "raw_record_count": int(raw[name]), "count_basis": "unique_" + unit} for name, count in counts.items()]
+
+    @staticmethod
+    def _taxonomy_counts(df: pd.DataFrame, column: str) -> list[dict[str, Any]]:
+        if df.empty or column not in df:
+            return []
+        work = df.copy()
+        work["_entity"] = compound_keys(work)
+        work[column] = work[column].fillna("未分类").astype(str).str.split(r"[;,；|]")
+        work = work.explode(column)
+        work[column] = work[column].str.strip()
+        counts = work[work[column].ne("")].groupby(column)["_entity"].nunique().sort_values(ascending=False).head(20)
+        return [{"name": str(name), "count": int(count), "count_basis": "unique_compound"} for name, count in counts.items()]
 
     @staticmethod
     def _numeric_series(df: pd.DataFrame, column: str) -> pd.Series:
@@ -1764,92 +1768,29 @@ class HepatotoxicityPredictor:
             return pd.Series(0.0, index=df.index, dtype=float)
         return pd.to_numeric(df[column], errors="coerce")
 
-    @staticmethod
-    def _source_count_series(df: pd.DataFrame) -> pd.Series:
-        for column in ("Source_Herb_Count", "Source_Formulas_Count"):
-            if column in df.columns:
-                return pd.to_numeric(df[column], errors="coerce").fillna(0)
-        if "Source_Herbs" in df.columns:
-            return df["Source_Herbs"].fillna("").astype(str).map(
-                lambda value: len([part for part in re.split(r"[;；,，、]+", value) if part.strip()])
-            )
-        if "Herb.Chinese.name" in df.columns:
-            return df["Herb.Chinese.name"].fillna("").astype(str).map(lambda value: 1 if value.strip() else 0)
-        return pd.Series(0.0, index=df.index, dtype=float)
-
-    @staticmethod
-    def _domain_label_series(df: pd.DataFrame) -> pd.Series:
-        if "Smiles" not in df.columns:
-            return pd.Series("insufficient", index=df.index)
-        smiles = df["Smiles"].fillna("").astype(str).str.strip()
-        labels = pd.Series("borderline", index=df.index)
-        labels[smiles == ""] = "insufficient"
-        if "Class" in df.columns:
-            known_class = df["Class"].fillna("").astype(str).str.strip() != ""
-            labels[(smiles != "") & known_class] = "in_domain"
-        return labels
-
-    def _domain_score_series(self, df: pd.DataFrame) -> pd.Series:
-        labels = self._domain_label_series(df)
-        return labels.map({"in_domain": 1.0, "borderline": 0.65, "out_of_domain": 0.25, "insufficient": 0.2}).astype(float)
+    def _add_relation_counts(self, df: pd.DataFrame, column: str, unit: str, legacy_column: str) -> pd.DataFrame:
+        out = df.copy()
+        if out.empty or column not in out:
+            return out
+        counts = self._association_counts(out, column, unit, limit=len(out))
+        mapping = {row["name"]: row["count"] for row in counts}
+        out["hit_count"] = out[column].map(mapping).fillna(0).astype(int)
+        # 保留排序字段兼容分页接口，其值现在仅表示唯一实体数。
+        out[legacy_column] = out["hit_count"]
+        out["Count_Basis"] = "unique_" + unit
+        return out.sort_values("hit_count", ascending=False, kind="stable")
 
     def _add_target_priority(self, target_df: pd.DataFrame, high_toxic_df: pd.DataFrame) -> pd.DataFrame:
-        if target_df.empty:
-            return target_df.copy()
-        out = target_df.copy()
-        if "ChemicalName" in out.columns and "ChemicalName" in high_toxic_df.columns:
-            toxic_meta = high_toxic_df[[col for col in ["ChemicalName", "Max_Tox_Prob", "compound_priority_score"] if col in high_toxic_df.columns]]
-            toxic_meta = toxic_meta.drop_duplicates(subset=["ChemicalName"])
-            out = out.merge(toxic_meta, on="ChemicalName", how="left", suffixes=("", "_compound"))
-        degree = out["Symbol"].map(out["Symbol"].value_counts()) if "Symbol" in out.columns else pd.Series(1, index=out.index)
-        keyword_score = out.get("Symbol", pd.Series("", index=out.index)).fillna("").astype(str).map(self._mechanism_keyword_score)
-        out["mechanism_tags"] = out.get("Symbol", pd.Series("", index=out.index)).fillna("").astype(str).map(self._mechanism_tags)
-        out["target_priority_score"] = (
-            self._numeric_series(out, "compound_priority_score").fillna(self._numeric_series(out, "Max_Tox_Prob")).fillna(0) * 0.55
-            + (degree / max(float(degree.max()), 1.0)).fillna(0) * 0.25
-            + keyword_score.fillna(0) * 0.20
-        ).round(4)
-        return out.sort_values("target_priority_score", ascending=False)
+        return self._add_relation_counts(target_df, "Symbol", "compound", "target_priority_score")
 
     def _add_pathway_priority(self, pathway_df: pd.DataFrame) -> pd.DataFrame:
-        if pathway_df.empty:
-            return pathway_df.copy()
-        out = pathway_df.copy()
-        name_col = "PathwayName" if "PathwayName" in out.columns else out.columns[-1]
-        pathway_names = out[name_col].fillna("").astype(str).str.strip()
-        non_empty_names = pathway_names[pathway_names != ""]
-        hit_count = pathway_names.map(non_empty_names.value_counts()).fillna(0).astype(int)
-        keyword_score = pathway_names.map(self._mechanism_keyword_score)
-        out["hit_count"] = hit_count
-        out["mechanism_tags"] = pathway_names.map(self._mechanism_tags)
-        max_hits = max(float(hit_count.max()) if len(hit_count) else 0.0, 1.0)
-        out["pathway_priority_score"] = (
-            (hit_count / max_hits).fillna(0) * 0.65
-            + keyword_score.fillna(0) * 0.35
-        ).round(4)
-        return out.sort_values("pathway_priority_score", ascending=False)
+        return self._add_relation_counts(pathway_df, "PathwayName", "target", "pathway_priority_score")
 
     def _add_go_priority(self, go_df: pd.DataFrame) -> pd.DataFrame:
-        if go_df.empty:
-            return go_df.copy()
-        out = go_df.copy()
-        term_col = "TERM" if "TERM" in out.columns else ("GOTermName" if "GOTermName" in out.columns else out.columns[-1])
-        text = out[term_col].fillna("").astype(str)
-        keyword_score = text.map(self._mechanism_keyword_score)
-        generic_penalty = text.str.contains("protein binding|binding|cellular process", case=False, regex=True, na=False).astype(float) * 0.35
-        out["go_category"] = out.get("Ontology", pd.Series("", index=out.index)).fillna("").astype(str)
-        out["go_priority_score"] = (keyword_score - generic_penalty + 0.35).clip(lower=0).round(4)
-        return out.sort_values("go_priority_score", ascending=False)
+        return self._add_relation_counts(go_df, "TERM", "target", "go_priority_score")
 
     def _add_disease_priority(self, disease_df: pd.DataFrame) -> pd.DataFrame:
-        if disease_df.empty:
-            return disease_df.copy()
-        out = disease_df.copy()
-        name_col = "DiseaseName" if "DiseaseName" in out.columns else out.columns[-1]
-        text = out[name_col].fillna("").astype(str)
-        out["disease_category"] = text.map(lambda value: "hepatic" if self._mechanism_keyword_score(value) >= 0.5 else "other")
-        out["disease_priority_score"] = (text.map(self._mechanism_keyword_score) + 0.15).clip(upper=1).round(4)
-        return out.sort_values("disease_priority_score", ascending=False)
+        return self._add_relation_counts(disease_df, "DiseaseName", "compound", "disease_priority_score")
 
     @staticmethod
     def _mechanism_keyword_score(value: str) -> float:
@@ -1880,69 +1821,6 @@ class HepatotoxicityPredictor:
             if any(key in text for key in keys):
                 tags.append(label)
         return tags
-
-    def _build_confidence_profile(
-        self,
-        livertox_df: pd.DataFrame,
-        summary_row: dict[str, Any],
-        probabilities: dict[str, float],
-    ) -> dict[str, Any]:
-        score = 0.9
-        reasons: list[str] = []
-        if probabilities.get("animal", 0) >= 0.999:
-            score -= 0.18
-            reasons.append("animal_probability_saturation")
-        model_values = [probabilities.get("cell", 0), probabilities.get("animal", 0), probabilities.get("clinical", 0)]
-        if max(model_values) - min(model_values) >= 0.55:
-            score -= 0.16
-            reasons.append("large_model_disagreement")
-        valid = self._int_value(summary_row.get("Original_valid_molecule_count"), int(len(livertox_df)))
-        total = int(len(livertox_df))
-        if total and valid < total:
-            score -= min(0.18, (total - valid) / total * 0.3)
-            reasons.append("smiles_missing_or_invalid")
-        domain = self._build_applicability_domain(livertox_df)
-        if domain["domain_label"] == "out_of_domain":
-            score -= 0.25
-            reasons.append("applicability_domain_outlier")
-        elif domain["domain_label"] == "borderline":
-            score -= 0.12
-            reasons.append("applicability_domain_borderline")
-        if not reasons:
-            reasons.append("no_major_degradation_rule_triggered")
-        score = round(max(0.05, min(score, 0.98)), 4)
-        if score >= 0.75:
-            level = "high"
-        elif score >= 0.45:
-            level = "medium"
-        elif score >= 0.2:
-            level = "low"
-        else:
-            level = "insufficient"
-        return {"confidence_level": level, "confidence_score": score, "confidence_reasons": reasons}
-
-    def _build_applicability_domain(self, livertox_df: pd.DataFrame) -> dict[str, Any]:
-        if livertox_df.empty:
-            return {"domain_label": "insufficient", "domain_coverage": 0.0, "counts": {}}
-        labels = self._domain_label_series(livertox_df)
-        counts = labels.value_counts().to_dict()
-        coverage = round(float((labels == "in_domain").mean()), 4)
-        if coverage >= 0.75:
-            label = "in_domain"
-        elif coverage >= 0.35:
-            label = "borderline"
-        elif labels.eq("insufficient").all():
-            label = "insufficient"
-        else:
-            label = "out_of_domain"
-        return {"domain_label": label, "domain_coverage": coverage, "counts": counts}
-
-    def _exposure_weighted_risk(self, livertox_df: pd.DataFrame) -> float | None:
-        if livertox_df.empty or "Max_Tox_Prob" not in livertox_df.columns:
-            return None
-        risk = self._numeric_series(livertox_df, "Max_Tox_Prob").fillna(0)
-        weights = self._numeric_series(livertox_df, "Bioavailability_Ma").fillna(0.5).clip(0.05, 1.0)
-        return round(float((risk * weights).sum() / max(float(weights.sum()), 1e-9)), 4)
 
     @staticmethod
     def _top_names(df: pd.DataFrame, name_col: str, score_col: str, limit: int) -> list[str]:
@@ -2014,7 +1892,7 @@ class HepatotoxicityPredictor:
         sections = []
         for section_id, (title, filename) in self._section_file_map(query_type, config).items():
             path = output_dir / filename
-            row_count = self._section_row_count(output_dir, filename)
+            row_count = self._csv_row_count(path)
             page_api = f"/api/jobs/{job_id}/sections/{section_id}" if job_id else None
             sections.append(
                 {
@@ -2022,6 +1900,7 @@ class HepatotoxicityPredictor:
                     "title": title,
                     "row_count": row_count,
                     "page_api": page_api,
+                    "export_api": f"/api/jobs/{job_id}/sections/{section_id}/export" if job_id else None,
                     "default_sort": self._default_sort_for_section(section_id),
                     "available_filters": ["keyword"],
                     "source_file": filename,
@@ -2033,7 +1912,7 @@ class HepatotoxicityPredictor:
     @staticmethod
     def _default_sort_for_section(section_id: str) -> str | None:
         return {
-            "toxic_compounds": "compound_priority_score",
+            "toxic_compounds": "Max_Tox_Prob",
             "toxic_targets": "target_priority_score",
             "toxic_pathways": "pathway_priority_score",
             "toxic_go": "go_priority_score",
@@ -2264,7 +2143,7 @@ class HepatotoxicityPredictor:
             df = self._read_external_csv(path)
             target_filename = EXTERNAL_PREDICTION_CONFIG[query_type]["tab_files"]["toxic_targets"][1]
             target_path = Path(output_dir) / target_filename
-            if target_path.exists():
+            if target_path.exists() and "Raw_Record_Count" not in df:
                 target_df = self._mechanism_section_frame(query_type, Path(output_dir), "toxic_targets")
                 df = self._target_disease_frame_from_targets(target_df, df)
             df = _normalize_relation_output_frame(df, section_id)
@@ -2362,56 +2241,17 @@ class HepatotoxicityPredictor:
             "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
         }
 
-    def build_prediction_visuals_from_frames(
-        self,
-        summary: dict[str, Any],
-        probabilities: dict[str, float],
-        high_toxic_df: pd.DataFrame,
-        target_df: pd.DataFrame,
-        pathway_df: pd.DataFrame,
-        go_df: pd.DataFrame,
-        disease_df: pd.DataFrame,
-    ) -> list[dict[str, Any]]:
-        specs: list[dict[str, Any]] = []
-        risk_data = [
-            {"model": "Cell", "score_type": "raw", "probability": probabilities.get("cell", 0)},
-            {"model": "Animal", "score_type": "raw", "probability": probabilities.get("animal", 0)},
-            {"model": "Clinical", "score_type": "raw", "probability": probabilities.get("clinical", 0)},
-        ]
-        specs.append(self._chart_spec("risk_model_bar", "三模型肝毒性概率", "bar", risk_data, {"x": "model", "y": "probability", "series": "score_type"}, description="显示三个模型原始概率；校准模型缺失时不展示校准概率。", source_section="final"))
-        specs.append(
-            self._chart_spec(
-                "prediction_funnel",
-                "预测流程收敛",
-                "funnel",
-                [
-                    {"stage": "总成分", "count": summary.get("total_compounds", 0)},
-                    {"stage": "有效SMILES", "count": summary.get("valid_smiles_count", 0)},
-                    {"stage": "入血成分", "count": summary.get("intoblood_count", 0)},
-                    {"stage": "有效吸收", "count": summary.get("absorbed_count", 0)},
-                    {"stage": "高危肝毒", "count": summary.get("high_toxic_count", 0)},
-                ],
-                {"x": "stage", "y": "count"},
-                source_section="overview",
-            )
-        )
+    def build_prediction_visuals_from_frames(self, summary, probabilities, high_toxic_df, target_df, pathway_df, go_df, disease_df):
+        specs = [self._chart_spec("risk_model_bar", "三端点最大概率", "bar",
+            [{"model": e, "probability": probabilities.get(e)} for e in ("cell", "animal", "clinical")],
+            {"x": "model", "y": "probability"}, description="成分集合中各端点的最大模型输出；关联计数不代表因果或显著性富集。", source_section="final")]
+        specs.append(self._chart_spec("prediction_funnel", "入血筛选流程（唯一成分数）", "bar",
+            [{"stage": label, "count": summary.get(key, 0)} for label, key in [("总成分", "total_compounds"), ("实测匹配", "reference_match_count"), ("ADMET通过", "admet_pass_count"), ("已评估", "evaluated_count"), ("阳性候选", "candidate_count")]],
+            {"x": "stage", "y": "count"}, source_section="overview"))
         if not high_toxic_df.empty:
-            top_compounds = self._records_from_external_df(high_toxic_df.head(20), None)
-            specs.append(self._chart_spec("top_compounds_bar", "高危成分 TOP20", "bar", top_compounds, {"x": "ChemicalName", "y": "compound_priority_score"}, source_section="toxic_compounds", click_action={"filter_section": "toxic_compounds", "field": "ChemicalName"}))
-            source_data = self._source_herb_contribution(high_toxic_df)
-            specs.append(self._chart_spec("source_herb_contribution_bar", "来源中药风险贡献", "bar", source_data, {"x": "herb", "y": "high_toxic_count", "series": "metric"}, source_section="toxic_compounds"))
-            class_data = self._distribution_records(high_toxic_df, "Class", 10)
-            specs.append(self._chart_spec("class_distribution", "高危成分类别分布", "pie", class_data, {"name": "name", "value": "count"}, source_section="toxic_compounds"))
-        if not target_df.empty:
-            specs.append(self._chart_spec("target_network_graph", "成分-靶标-通路网络", "graph", self._target_network_records(high_toxic_df, target_df, pathway_df), {"nodes": "nodes", "edges": "edges"}, source_section="toxic_targets", click_action={"filter_section": "toxic_targets", "field": "name"}))
-        if not pathway_df.empty:
-            specs.append(self._chart_spec("pathway_enrichment_bar", "通路机制优先级", "bar", self._records_from_external_df(pathway_df.head(20), None), {"x": "PathwayName", "y": "pathway_priority_score", "size": "hit_count"}, source_section="toxic_pathways"))
-        if not go_df.empty:
-            term_col = "TERM" if "TERM" in go_df.columns else ("GOTermName" if "GOTermName" in go_df.columns else go_df.columns[-1])
-            go_data = self._records_from_external_df(go_df.head(30).rename(columns={term_col: "TERM"}), None)
-            specs.append(self._chart_spec("go_mechanism_treemap", "GO机制分类", "treemap", go_data, {"name": "TERM", "value": "go_priority_score", "category": "go_category"}, source_section="toxic_go"))
-        if not disease_df.empty:
-            specs.append(self._chart_spec("disease_top_bar", "肝病相关疾病 TOP20", "bar", self._records_from_external_df(disease_df.head(20), None), {"x": "DiseaseName", "y": "disease_priority_score"}, source_section="toxic_diseases"))
+            specs.append(self._chart_spec("top_compounds_bar", "候选成分 Pmax TOP20", "bar", self._records_from_external_df(high_toxic_df.head(20), None), {"x": "ChemicalName", "y": "Max_Tox_Prob"}, source_section="toxic_compounds"))
+        for frame, column, unit, section in [(target_df, "Symbol", "compound", "toxic_targets"), (pathway_df, "PathwayName", "target", "toxic_pathways"), (go_df, "TERM", "target", "toxic_go"), (disease_df, "DiseaseName", "compound", "toxic_diseases")]:
+            specs.append(self._chart_spec(section + "_counts", column + ("（唯一成分数）" if unit == "compound" else "（唯一靶标数）"), "bar", self._association_counts(frame, column, unit), {"x": "name", "y": "count"}, source_section=section))
         return specs
 
     @staticmethod
@@ -2510,7 +2350,7 @@ class HepatotoxicityPredictor:
     def _target_network_records(self, high_toxic_df: pd.DataFrame, target_df: pd.DataFrame, pathway_df: pd.DataFrame) -> list[dict[str, Any]]:
         nodes: dict[str, dict[str, Any]] = {}
         edges: list[dict[str, Any]] = []
-        compound_names = self._top_names(high_toxic_df, "ChemicalName", "compound_priority_score", 20)
+        compound_names = self._top_names(high_toxic_df, "ChemicalName", "Max_Tox_Prob", 20)
         for name in compound_names:
             nodes[f"compound:{name}"] = {"id": f"compound:{name}", "name": name, "type": "compound", "score": 1, "size": 18, "category": "compound"}
         target_subset = target_df.copy()
@@ -3082,9 +2922,8 @@ class HepatotoxicityPredictor:
         for col in ["CID", "CID_num", "ChemicalName", "Smiles", "Class", "Superclass", "Pathway", "Is_glycoside", "Source_Herbs", "Source_Formulas"]:
             if col not in df.columns:
                 df[col] = None
-        df = df[pd.notna(df["Smiles"])].copy()
-        df["Smiles"] = df["Smiles"].astype(str)
-        df = df.drop_duplicates(subset=["Smiles"]).reset_index(drop=True)
+        df["Compound_Key"] = compound_keys(df)
+        df = df.drop_duplicates(subset=["Compound_Key"]).reset_index(drop=True)
         return df
 
     def _predict_intoblood(self, chemicals: pd.DataFrame) -> pd.DataFrame:
@@ -3098,60 +2937,7 @@ class HepatotoxicityPredictor:
         return matched
 
     def _evaluate_toxicity(self, df: pd.DataFrame) -> pd.DataFrame:
-        scored = df.copy()
-        for col, default in [
-            ("LogP", None),
-            ("MW", None),
-            ("QED", None),
-            ("OB_Percent", None),
-            ("Is_Absorbed", False),
-            ("Pred_Cell_Toxicity", -1),
-            ("Pred_Cell_prob", -1.0),
-            ("Pred_Animal_Toxicity", -1),
-            ("Pred_Animal_prob", -1.0),
-            ("Pred_Clinical_Toxicity", -1),
-            ("Pred_Clinical_prob", -1.0),
-            ("Max_Tox_Prob", -1.0),
-        ]:
-            scored[col] = default
-
-        for idx, row in scored.iterrows():
-            if not bool(row.get("is_valid_smiles")):
-                continue
-            mol = Chem.MolFromSmiles(str(row["Smiles"]))
-            if mol is None:
-                continue
-            logp = round(float(Descriptors.MolLogP(mol)), 2)
-            mw = round(float(Descriptors.MolWt(mol)), 2)
-            qed = round(float(QED.qed(mol)), 3)
-            ob = _native(row.get("Bioavailability_Ma"))
-            scored.at[idx, "LogP"] = logp
-            scored.at[idx, "MW"] = mw
-            scored.at[idx, "QED"] = qed
-            scored.at[idx, "OB_Percent"] = ob
-            scored.at[idx, "Is_Absorbed"] = bool(
-                row.get("IntoBlood") == 1
-                and logp <= 5.0
-                and mw <= 500.0
-                and qed >= 0.3
-                and ob is not None
-                and float(ob) > 0.3
-            )
-
-        absorbed_indices = scored[scored["Is_Absorbed"] == True].index
-        if len(absorbed_indices) == 0:
-            return scored
-
-        smiles = scored.loc[absorbed_indices, "Smiles"].astype(str).tolist()
-        pred_cell, prob_cell, pred_animal, prob_animal, pred_clinical, prob_clinical = self._predict_multimodel(smiles)
-        scored.loc[absorbed_indices, "Pred_Cell_Toxicity"] = pred_cell
-        scored.loc[absorbed_indices, "Pred_Cell_prob"] = np.round(prob_cell, 4)
-        scored.loc[absorbed_indices, "Pred_Animal_Toxicity"] = pred_animal
-        scored.loc[absorbed_indices, "Pred_Animal_prob"] = np.round(prob_animal, 4)
-        scored.loc[absorbed_indices, "Pred_Clinical_Toxicity"] = pred_clinical
-        scored.loc[absorbed_indices, "Pred_Clinical_prob"] = np.round(prob_clinical, 4)
-        scored.loc[absorbed_indices, "Max_Tox_Prob"] = np.max([prob_cell, prob_animal, prob_clinical], axis=0)
-        return scored
+        return evaluate_compounds(df, self._load_models())
 
     def _load_models(self) -> tuple[Any, Any, Any]:
         if self._models is not None:
@@ -3192,33 +2978,23 @@ class HepatotoxicityPredictor:
         scored: pd.DataFrame,
         context: dict[str, Any],
     ) -> dict[str, Any]:
-        threshold = 0.85
-        valid = scored[scored["is_valid_smiles"] == True].copy()
-        absorbed = valid[valid["Is_Absorbed"] == True].copy()
-        high_toxic = absorbed[absorbed["Max_Tox_Prob"] >= threshold].sort_values("Max_Tox_Prob", ascending=False).copy()
-
-        absorbed_count = int(len(absorbed))
-        high_count = int(len(high_toxic))
-        enrichment = high_count / absorbed_count if absorbed_count else 0.0
-        risk = self._risk_from_enrichment(enrichment, absorbed_count)
-        probabilities = {
-            "cell": self._safe_max(absorbed["Pred_Cell_prob"]),
-            "animal": self._safe_max(absorbed["Pred_Animal_prob"]),
-            "clinical": self._safe_max(absorbed["Pred_Clinical_prob"]),
-            "max": self._safe_max(absorbed["Max_Tox_Prob"]),
-        }
+        summary, probabilities, statistics = prediction_summary(scored)
+        valid = scored[scored["is_valid_smiles"]].copy()
+        absorbed = scored[scored["Is_Absorbed"]].copy()
+        high_toxic = scored[scored["Hepatotoxicity_Score"].ge(1)].sort_values("Max_Tox_Prob", ascending=False).copy()
 
         high_with_meta = high_toxic.copy()
-        class_counts = _top_counts(high_with_meta.get("Class", pd.Series(dtype=str)))
-        superclass_counts = _top_counts(high_with_meta.get("Superclass", pd.Series(dtype=str)))
-        pathway_family_counts = _top_counts(high_with_meta.get("Pathway", pd.Series(dtype=str)))
+        class_counts = self._taxonomy_counts(high_with_meta, "Class")
+        superclass_counts = self._taxonomy_counts(high_with_meta, "Superclass")
+        pathway_family_counts = self._taxonomy_counts(high_with_meta, "Pathway")
 
         target_rows = self._target_rows_for_high_toxic(high_with_meta)
         pathway_rows = self._pathway_rows_for_targets(target_rows)
         go_rows = self._go_rows_for_targets(target_rows)
-        disease_rows = self._disease_rows_for_targets(target_rows)
+        disease_rows = self._target_disease_frame_from_targets(target_rows)
 
         display_cols = [
+            "Precomputed_Match", "Standardized_SMILES", "Hepatotoxicity_Score", "Positive_Endpoints", "Endpoint_Combination", "Pmax_Source", "Assessment_Status",
             "CID",
             "ChemicalName",
             "Smiles",
@@ -3243,7 +3019,7 @@ class HepatotoxicityPredictor:
         trace_details = self._build_trace_details(query_type, context, scored)
         herb_candidates = self._summary_herb_candidates(query_type, items, trace_details, scored, context)
         food_medicine_homology = self._food_medicine_homology_summary(herb_candidates)
-        consensus_reference = self._consensus_reference(absorbed, absorbed_count)
+
         toxicity_details = self._build_toxicity_details(
             high_toxic=high_toxic,
             display_cols=display_cols,
@@ -3253,24 +3029,14 @@ class HepatotoxicityPredictor:
             disease_rows=disease_rows,
         )
 
-        summary = {
-            "total_compounds": int(len(scored)),
-            "valid_smiles_count": int(len(valid)),
-            "intoblood_count": int((valid["IntoBlood"] == 1).sum()),
-            "absorbed_count": absorbed_count,
-            "toxic_threshold": threshold,
-            "high_toxic_count": high_count,
-            "enrichment_ratio": round(float(enrichment), 6),
-            "max_toxic_probability": probabilities["max"],
-            "risk_level": risk["level"],
-            "risk_label": risk["label"],
-            "advice": risk["advice"],
-            "food_medicine_homology": food_medicine_homology,
-            "consensus_reference": consensus_reference,
-        }
+        summary["food_medicine_homology"] = food_medicine_homology
+        summary["disclaimer"] = DISCLAIMER_TEXT
 
         return {
             "ok": True,
+            "response_schema_version": PREDICTION_RESPONSE_SCHEMA_VERSION,
+            "model_metadata": model_metadata(self._load_models()),
+            "prediction_statistics": statistics,
             "query_type": query_type,
             "query": items,
             "summary": summary,
@@ -3280,39 +3046,13 @@ class HepatotoxicityPredictor:
             "class_counts": class_counts,
             "superclass_counts": superclass_counts,
             "pathway_family_counts": pathway_family_counts,
-            "target_counts": _top_counts(target_rows.get("Symbol", pd.Series(dtype=str))),
-            "pathway_counts": _top_counts(pathway_rows.get("PathwayName", pd.Series(dtype=str))),
-            "go_counts": _top_counts(go_rows.get("TERM", pd.Series(dtype=str))),
+            "target_counts": self._association_counts(target_rows, "Symbol", "compound"),
+            "pathway_counts": self._association_counts(pathway_rows, "PathwayName", "target"),
+            "go_counts": self._association_counts(go_rows, "TERM", "target"),
             "high_risk_compounds": _records(high_toxic[display_cols], 50),
             "compounds": _records(scored[display_cols].sort_values("Max_Tox_Prob", ascending=False), 100),
             "trace_details": trace_details,
             "toxicity_details": toxicity_details,
-        }
-
-    @staticmethod
-    def _risk_from_enrichment(enrichment: float, absorbed_count: int) -> dict[str, str]:
-        if absorbed_count == 0:
-            return {
-                "level": "low",
-                "label": "低风险",
-                "advice": "未检出满足入血与吸收阈值的有效成分，系统判定为低风险；建议结合实验数据复核。",
-            }
-        if enrichment < 0.02:
-            return {
-                "level": "low",
-                "label": "低风险",
-                "advice": "方剂或成分组整体肝毒性风险较低，可进入常规安全性复核流程。",
-            }
-        if enrichment < 0.05:
-            return {
-                "level": "moderate",
-                "label": "中等风险",
-                "advice": "存在肝毒性成分富集迹象，建议控制剂量并进行关键成分与肝功能指标复核。",
-            }
-        return {
-            "level": "high",
-            "label": "高风险",
-            "advice": "系统性毒性富集率超过阈值，提示潜在药物性肝损伤风险，建议优先开展机制验证与配伍优化。",
         }
 
     @staticmethod
@@ -3437,85 +3177,6 @@ class HepatotoxicityPredictor:
             "source": source,
             "note": note,
             "matched_records": _records(matched, 50),
-        }
-
-    def _consensus_reference(self, df: pd.DataFrame, absorbed_count: int | None = None) -> dict[str, Any]:
-        threshold = 0.75
-        empty_result = {
-            "max_probability": 0.0,
-            "high_toxic_count": 0,
-            "enrichment_ratio": 0.0,
-            "risk_level": "low",
-            "risk_label": "低风险",
-            "advice": "未检出可用于模型一致性参考的有效吸收成分。",
-            "toxic_threshold": threshold,
-            "evaluated_count": 0,
-            "animal_saturation_ratio": 0.0,
-            "model_quality_flags": [],
-        }
-        if df.empty:
-            return empty_result
-
-        work = df.copy()
-        if "Is_Absorbed" in work.columns:
-            absorbed_mask = work["Is_Absorbed"].map(
-                lambda value: value is True or str(value).strip().casefold() in {"true", "1", "yes"}
-            )
-            work = work[absorbed_mask].copy()
-        if work.empty:
-            return empty_result
-
-        index = work.index
-        weighted_sum = pd.Series(0.0, index=index)
-        weight_sum = pd.Series(0.0, index=index)
-
-        def add_weighted(column: str, weight: float, calibrated: bool = False) -> pd.Series:
-            if column not in work.columns:
-                return pd.Series(np.nan, index=index)
-            values = pd.to_numeric(work[column], errors="coerce")
-            values = values.where(values >= 0)
-            if calibrated:
-                values = (0.5 + 0.35 * (values - 0.5)).clip(lower=0.0, upper=1.0)
-            valid = values.notna()
-            weighted_sum.loc[valid] += values.loc[valid] * weight
-            weight_sum.loc[valid] += weight
-            return values
-
-        add_weighted("Pred_Cell_prob", 0.35)
-        animal_values = add_weighted("Pred_Animal_prob", 0.25, calibrated=True)
-        add_weighted("Pred_Clinical_prob", 0.40)
-
-        consensus = (weighted_sum / weight_sum).where(weight_sum > 0)
-        consensus = consensus.dropna()
-        if consensus.empty:
-            return empty_result
-
-        evaluated_count = int(len(consensus))
-        denominator = int(absorbed_count if absorbed_count is not None else evaluated_count)
-        if denominator <= 0:
-            denominator = evaluated_count
-        high_count = int((consensus >= threshold).sum())
-        enrichment = high_count / denominator if denominator else 0.0
-        risk = self._risk_from_enrichment(enrichment, denominator)
-
-        animal_raw = pd.to_numeric(work.get("Pred_Animal_prob", pd.Series(dtype=float)), errors="coerce")
-        animal_raw = animal_raw[animal_raw >= 0]
-        saturation_ratio = float((animal_raw >= 0.99).sum() / len(animal_raw)) if len(animal_raw) else 0.0
-        model_quality_flags: list[str] = []
-        if saturation_ratio > 0.8:
-            model_quality_flags.append("animal_probability_saturation")
-
-        return {
-            "max_probability": round(float(consensus.max()), 4),
-            "high_toxic_count": high_count,
-            "enrichment_ratio": round(float(enrichment), 6),
-            "risk_level": risk["level"],
-            "risk_label": risk["label"],
-            "advice": risk["advice"],
-            "toxic_threshold": threshold,
-            "evaluated_count": evaluated_count,
-            "animal_saturation_ratio": round(saturation_ratio, 6),
-            "model_quality_flags": model_quality_flags,
         }
 
     @staticmethod
@@ -3935,13 +3596,10 @@ class HepatotoxicityPredictor:
 
     def _target_rows_for_high_toxic(self, high_toxic: pd.DataFrame) -> pd.DataFrame:
         if high_toxic.empty:
-            return pd.DataFrame()
+            return pd.DataFrame(columns=["CID", "ChemicalName", "Smiles", "Standardized_SMILES", "Symbol"])
         data = self._load_data()
         high_toxic = self._fill_compound_names_from_cid(high_toxic)
-        names = high_toxic.get("ChemicalName", pd.Series(dtype=str)).dropna().astype(str).unique().tolist()
-        if not names:
-            return pd.DataFrame()
-        return data["compound_target"][data["compound_target"]["ChemicalName"].isin(names)].drop_duplicates().copy()
+        return candidate_target_links(high_toxic, data["herb_compound"], data["compound_target"])
 
     def _pathway_rows_for_targets(self, target_rows: pd.DataFrame) -> pd.DataFrame:
         if target_rows.empty or "Symbol" not in target_rows.columns:

@@ -125,3 +125,59 @@ def test_failed_job_preserves_output_and_log_paths(tmp_path: Path) -> None:
     assert failed["traceback_log_path"]
     assert Path(failed["traceback_log_path"]).exists()
     assert "response build exploded" in failed["error_summary"]
+
+
+def test_full_csv_export_exceeds_preview_and_preserves_nulls(tmp_path):
+    import csv
+    import io
+    import json
+    from backend.predictor import PREDICTION_RESPONSE_SCHEMA_VERSION
+    settings = make_settings(tmp_path)
+    predictor = FakePredictor(tmp_path / "run-output")
+    predictor._section_file_map = lambda kind: {"toxic_compounds": ("Candidates", "compounds.csv")}
+    manager = JobManager(predictor, JobStore(settings.job_db), settings)
+    created = manager.create_prediction_job("herb", "何首乌")
+    wait_for_status(manager, created["job_id"], "succeeded")
+    frame_path = predictor.output_dir / "compounds.csv"
+    frame_path.write_text("CID,Max_Tox_Prob\n" + "".join(f"{i},\n" for i in range(1501)), encoding="utf-8")
+    result_path = predictor.output_dir / "toxherb_result.json"
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    result.update(response_schema_version=PREDICTION_RESPONSE_SCHEMA_VERSION, sections=[{"id": "toxic_compounds"}])
+    result["summary"].update(method_version="manuscript-20260922", endpoint_thresholds={"cell": .55, "animal": .96, "clinical": .64})
+    result_path.write_text(json.dumps(result), encoding="utf-8")
+    rows = list(csv.DictReader(io.StringIO("".join(manager.export_csv(created["job_id"], "toxic_compounds")).lstrip("\ufeff"))))
+    assert len(rows) == 1501 and rows[-1]["CID"] == "1500"
+    assert rows[-1]["Max_Tox_Prob"] == "" and rows[0]["Animal_Threshold"] == "0.96"
+    cached = manager.create_prediction_job("herb", "何首乌")
+    loaded = manager.get_result(cached["job_id"])
+    assert loaded["job_id"] == cached["job_id"]
+    assert cached["job_id"] in loaded["sections"][0]["export_api"]
+    assert loaded["legacy_result"] is False
+
+
+def test_legacy_results_are_marked_without_rewriting(tmp_path):
+    settings = make_settings(tmp_path)
+    predictor = FakePredictor(tmp_path / "run-output")
+    manager = JobManager(predictor, JobStore(settings.job_db), settings)
+    job = manager.create_prediction_job("herb", "何首乌")
+    wait_for_status(manager, job["job_id"], "succeeded")
+    before = (predictor.output_dir / "toxherb_result.json").read_bytes()
+    assert manager.get_result(job["job_id"])["legacy_result"] is True
+    assert before == (predictor.output_dir / "toxherb_result.json").read_bytes()
+
+
+def test_running_job_cancellation(tmp_path):
+    import threading
+    from backend.predictor import PredictionError
+    started = threading.Event()
+    class CancelPredictor(FakePredictor):
+        def run_prediction_pipeline(self, query_type, items, *, job_id=None, progress_callback=None, cancel_event=None):
+            started.set()
+            assert cancel_event.wait(5)
+            raise PredictionError("用户请求取消任务", status_code=499)
+    settings = make_settings(tmp_path)
+    manager = JobManager(CancelPredictor(tmp_path / "run-output"), JobStore(settings.job_db), settings)
+    job = manager.create_prediction_job("herb", "何首乌")
+    assert started.wait(2)
+    manager.cancel_job(job["job_id"])
+    assert wait_for_status(manager, job["job_id"], "cancelled")["result_ready"] is False

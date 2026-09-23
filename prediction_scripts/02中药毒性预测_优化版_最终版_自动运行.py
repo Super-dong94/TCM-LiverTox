@@ -14,7 +14,7 @@
 # 3. **上游数据整合为主表**，减少多个中间变量和重复文件；
 # 4. **入血预测结果只保存最终完整表**；
 # 5. **肝毒性预测输入只在内存中保留**，必要时临时写出后自动删除；
-# 6. **高危成分、靶标、通路、GO、疾病结果保留独立 CSV**，便于后续分析；
+# 6. **候选成分、靶标、通路、GO、疾病结果保留独立 CSV**，便于后续分析；
 # 7. **所有统计结果统一保存到一个 `11_consolidated_count_summary.csv`**；
 # 8. **自动生成输出文件清单 `00_output_file_manifest.csv`**。
 #
@@ -27,11 +27,11 @@
 # | `03_intoblood_prediction_results.csv` | 中药候选化合物入血预测结果 |
 # | `04_livertox_prediction_results.csv` | 入血成分肝毒性预测结果 |
 # | `05_chinese_medicine_toxicity_summary.csv` | 中药层面的综合毒性评估摘要 |
-# | `06_high_toxic_chemicals_master.csv` | 高危肝毒性成分主表，含化学分类信息 |
-# | `07_high_toxic_chemical_targets.csv` | 高危成分-靶标关系 |
-# | `08_high_toxic_target_pathways.csv` | 高危靶标-通路关系 |
-# | `09_high_toxic_target_GO_terms.csv` | 高危靶标-GO 关系 |
-# | `10_high_toxic_target_disease_results.csv` | 高危靶标-疾病关系 |
+# | `06_high_toxic_chemicals_master.csv` | 阳性候选成分主表，含化学分类信息 |
+# | `07_high_toxic_chemical_targets.csv` | 候选成分-靶标关系 |
+# | `08_high_toxic_target_pathways.csv` | 候选关联靶标-通路关系 |
+# | `09_high_toxic_target_GO_terms.csv` | 候选关联靶标-GO 关系 |
+# | `10_high_toxic_target_disease_results.csv` | 候选关联靶标-疾病关系 |
 # | `11_consolidated_count_summary.csv` | 化学类别、靶标、通路、GO、疾病等统计结果整合表 |
 # | `00_output_file_manifest.csv` | 本次输出文件清单 |
 #
@@ -102,9 +102,9 @@ SMILES_COL = "Smiles"
 # 每批处理的化合物数量。数据量大或内存不足时可调小，例如 300 或 500。
 CHUNK_SIZE = 1000
 
-# 高危肝毒性成分筛选阈值。
+# 阳性候选成分筛选阈值。
 # 如果 evaluate_tcm_formula 返回了模型内部阈值，后续会优先使用模型返回阈值。
-DEFAULT_TOXIC_THRESHOLD = 0.85
+DEFAULT_CANDIDATE_SCORE_THRESHOLD = 1
 
 # -----------------------------
 # 0.5 输出目录
@@ -209,46 +209,8 @@ def show_and_save_csv(df: pd.DataFrame, filename: str, max_rows: int = 10) -> Pa
     return save_csv(df, filename)
 
 
-def value_counts_table(
-    df: pd.DataFrame,
-    col: str,
-    count_type: str,
-    top_n=None,
-) -> pd.DataFrame:
-    """
-    对指定列进行频数统计，并返回统一格式的统计表。
-
-    返回字段
-    --------
-    - Count_Type: 统计类型；
-    - Source_Column: 来源字段；
-    - Item: 类别名称；
-    - Count: 数量；
-    - Percent: 当前统计类型内部占比。
-    """
-    if col not in df.columns or df.empty:
-        return pd.DataFrame(columns=["Count_Type", "Source_Column", "Item", "Count", "Percent"])
-
-    counts = (
-        df[col]
-        .dropna()
-        .astype(str)
-        .value_counts()
-        .rename_axis("Item")
-        .reset_index(name="Count")
-    )
-
-    if top_n is not None:
-        counts = counts.head(top_n)
-
-    if len(counts) > 0:
-        counts["Percent"] = counts["Count"] / counts["Count"].sum()
-    else:
-        counts["Percent"] = []
-
-    counts.insert(0, "Source_Column", col)
-    counts.insert(0, "Count_Type", count_type)
-    return counts
+def value_counts_table(df, col, count_type, top_n=None):
+    return count_table(df, col, count_type, top_n)
 
 
 def first_existing_col(df: pd.DataFrame, candidate_cols: list) -> str | None:
@@ -291,7 +253,7 @@ from tcm_datasets import *
 
 from rdkit import RDLogger
 from intoblood_pred import match_intoblood_reference
-from formula_livertox_pred import build_summary_annotations, evaluate_tcm_formula
+from formula_livertox_pred import build_summary_annotations, evaluate_tcm_formula, compound_keys, count_table, candidate_target_links
 
 # 关闭 RDKit 的部分 warning，避免大量无关提示干扰 notebook 阅读。
 RDLogger.DisableLog("rdApp.warning")
@@ -409,13 +371,20 @@ compound_master_df.insert(0, "Chinese_medicine_group", CHINESE_MEDICINE_GROUP_NA
 
 # 5）增加是否匹配到 SMILES 的标记
 compound_master_df["Has_SMILES"] = compound_master_df[SMILES_COL].notna()
+compound_master_df["Compound_Key"] = compound_keys(compound_master_df)
+if "Herb.Chinese.name" in compound_master_df:
+    source_herbs = compound_master_df.groupby("Compound_Key")["Herb.Chinese.name"].agg(lambda values: ";".join(sorted(set(values.dropna().astype(str)))))
+    compound_master_df["Source_Herbs"] = compound_master_df["Compound_Key"].map(source_herbs)
+if "Formula.Chinese.name" in compound_master_df:
+    source_formulas = compound_master_df.groupby("Compound_Key")["Formula.Chinese.name"].agg(lambda values: ";".join(sorted(set(values.dropna().astype(str)))))
+    compound_master_df["Source_Formulas"] = compound_master_df["Compound_Key"].map(source_formulas)
+
 
 # 6）同一 SMILES 只保留第一条进入入血预测，避免同一分子重复预测
 compound_master_df["For_Intoblood_Prediction"] = False
 valid_smiles_index = (
     compound_master_df
-    .loc[compound_master_df["Has_SMILES"]]
-    .drop_duplicates(subset=[SMILES_COL], keep="first")
+    .drop_duplicates(subset=["Compound_Key"], keep="first")
     .index
 )
 compound_master_df.loc[valid_smiles_index, "For_Intoblood_Prediction"] = True
@@ -438,7 +407,7 @@ toxherb_progress("entity_resolution", 20, "中药-成分映射完成")
 print(f"目标中药数量：{compound_master_df['Herb.Chinese.name'].nunique()}")
 print(f"中药原始化合物记录数：{len(compound_master_df)}")
 print(f"匹配到 SMILES 的记录数：{compound_master_df['Has_SMILES'].sum()}")
-print(f"用于入血预测的唯一 SMILES 数：{len(prediction_input_df)}")
+print(f"用于入血筛选的唯一成分数：{len(prediction_input_df)}")
 
 # %% [markdown]
 # ## 5. 入血成分预测
@@ -531,7 +500,8 @@ def predict_intoblood_in_chunks(
 
         # 兼容不同版本函数返回字段，只保留存在的核心预测字段
         core_cols = [
-            query_smiles_col,
+            "Compound_Key",
+            "Precomputed_Match",
             "Bioavailability_Ma",
             "Reference_Match",
             "IntoBlood",
@@ -567,7 +537,7 @@ if intoblood_pred_core_df.empty:
 # 2）将预测结果合并回中药-化合物主表，便于追踪入血成分来源于哪些中药和化合物
 intoblood_df = (
     prediction_input_df
-    .merge(intoblood_pred_core_df, on=SMILES_COL, how="left", suffixes=("", "_pred"))
+    .merge(intoblood_pred_core_df, on="Compound_Key", how="left", suffixes=("", "_pred"))
     .drop_duplicates()
     .reset_index(drop=True)
 )
@@ -586,12 +556,12 @@ require_columns(intoblood_df, ["IntoBlood"], "intoblood_df")
 
 intoblood_for_livertox_df = (
     intoblood_df
-    .drop_duplicates(subset=[SMILES_COL])
+    .drop_duplicates(subset=["Compound_Key"])
     .reset_index(drop=True)
 )
 
 show_table(intoblood_for_livertox_df, "入血成分内存表：intoblood_for_livertox_df")
-print(f"参考库判定为入血的唯一化合物数量：{int((intoblood_for_livertox_df['IntoBlood'] == 1).sum())}")
+print(f"入血规则判定通过的唯一化合物数量：{int((intoblood_for_livertox_df['IntoBlood'] == 1).sum())}")
 
 # %% [markdown]
 # ## 6. 入血成分的多层级肝毒性预测
@@ -647,35 +617,19 @@ finally:
         temp_livertox_input_path.unlink()
 
 # 如果函数返回了阈值，则优先使用函数返回阈值；否则使用默认阈值
-TOXIC_THRESHOLD = (
+CANDIDATE_SCORE_THRESHOLD = (
     model_toxic_threshold
     if model_toxic_threshold is not None
-    else DEFAULT_TOXIC_THRESHOLD
+    else DEFAULT_CANDIDATE_SCORE_THRESHOLD
 )
 
 # 4）将肝毒性结果与入血成分来源信息合并，减少后续回溯麻烦
 livertox_df = livertox_result_raw_df.copy()
-if SMILES_COL in livertox_df.columns and SMILES_COL in intoblood_for_livertox_df.columns:
-    add_cols = [
-        col for col in intoblood_for_livertox_df.columns
-        if col == SMILES_COL or col not in livertox_df.columns
-    ]
-    livertox_df = (
-        livertox_df
-        .merge(
-            intoblood_for_livertox_df[add_cols].drop_duplicates(subset=[SMILES_COL]),
-            on=SMILES_COL,
-            how="left",
-        )
-        .drop_duplicates()
-        .reset_index(drop=True)
-    )
-
 # 5）正式保存肝毒性预测结果
 show_and_save_csv(livertox_df, "04_livertox_prediction_results.csv")
 toxherb_progress("livertox_prediction", 62, "肝毒性多模型预测完成")
 
-print(f"肝毒性阈值：{TOXIC_THRESHOLD}")
+print(f"肝毒性阈值：{CANDIDATE_SCORE_THRESHOLD}")
 summary_annotations = build_summary_annotations(
     livertox_df,
     herb_candidates=CHINESE_MEDICINES,
@@ -693,10 +647,10 @@ summary_df = pd.DataFrame([{
     "Chinese_medicine_count": len(CHINESE_MEDICINES),
     "Original_valid_molecule_count": original_valid_molecule_count,
     "Absorbed_molecule_count_or_percent": absorbed_molecule_count_or_percent,
-    "Toxic_probability_threshold": TOXIC_THRESHOLD,
+    "Candidate_score_threshold": CANDIDATE_SCORE_THRESHOLD,
     "High_toxic_molecule_count": high_toxic_molecule_count,
-    "Toxic_enrichment_ratio": toxic_enrichment_ratio,
-    "Risk_level": risk_level,
+    "Candidate_ratio": toxic_enrichment_ratio,
+    "Screening_status": risk_level,
     "Advice": advice,
     **summary_annotations,
     "Output_dir": str(OUT_DIR.resolve()),
@@ -709,19 +663,18 @@ print("📊 中药肝毒性系统生物学评估报告")
 print("=" * 60)
 print(f"▶ 中药名称: {CHINESE_MEDICINE_GROUP_NAME}")
 print(f"▶ 原始检出有效分子数: {original_valid_molecule_count}")
-print(f"▶ 最终有效入血分子数/比例: {absorbed_molecule_count_or_percent}")
-print(f"▶ 高危肝毒分子数量 (任一层级 P >= {TOXIC_THRESHOLD}): {high_toxic_molecule_count}")
-print(f"▶ 毒性成分体内综合富集率: {toxic_enrichment_ratio:.2%}" if isinstance(toxic_enrichment_ratio, (int, float)) else f"▶ 毒性成分体内综合富集率: {toxic_enrichment_ratio}")
+print(f"▶ 最终入血候选成分数/比例: {absorbed_molecule_count_or_percent}")
+print(f"▶ 阳性候选成分数 (阳性端点数 >= {CANDIDATE_SCORE_THRESHOLD}): {high_toxic_molecule_count}")
+print(f"▶ 阳性候选成分比例: {toxic_enrichment_ratio:.2%}" if isinstance(toxic_enrichment_ratio, (int, float)) else f"▶ 阳性候选成分比例: {toxic_enrichment_ratio}")
 print(f"▶ 整体评价: {risk_level}")
 print(f"▶ 综合建议: {advice}")
 print(f"▶ 药食同源标注: {summary_annotations['Food_medicine_homology_note']}")
-print(f"▶ 模型一致性参考: {summary_annotations['Consensus_risk_level']}，最高参考概率 {summary_annotations['Consensus_max_probability']:.2%}")
 print("=" * 60)
 
 # %% [markdown]
-# ## 7. 高危肝毒性成分筛选
+# ## 7. 阳性候选成分筛选
 #
-# 这一节筛选 `Max_Tox_Prob >= TOXIC_THRESHOLD` 的高危肝毒性成分，并合并中药来源、化学分类等信息。
+# 这一节筛选 `Hepatotoxicity_Score >= CANDIDATE_SCORE_THRESHOLD` 的阳性候选成分，并合并中药来源、化学分类等信息。
 #
 # 输出：
 #
@@ -731,98 +684,37 @@ print("=" * 60)
 
 # %%
 # ============================================================
-# 7.1 筛选高危肝毒性成分并合并化学分类信息
+# 7.1 筛选阳性候选成分并合并化学分类信息
 # ============================================================
 
-require_columns(livertox_df, ["Max_Tox_Prob"], "livertox_df")
+require_columns(livertox_df, ["Max_Tox_Prob", "Hepatotoxicity_Score"], "livertox_df")
 
 high_toxic_df = (
     livertox_df
-    .loc[livertox_df["Max_Tox_Prob"] >= TOXIC_THRESHOLD]
-    .drop_duplicates(subset=[SMILES_COL])
+    .loc[livertox_df["Hepatotoxicity_Score"] >= CANDIDATE_SCORE_THRESHOLD]
+    .drop_duplicates(subset=["Compound_Key"])
+    .sort_values("Max_Tox_Prob", ascending=False)
     .reset_index(drop=True)
 )
 
-# 如果 livertox_df 中还缺少部分化学分类字段，则从 compound_master_df 中补充
-if SMILES_COL in high_toxic_df.columns:
-    preferred_meta_cols = [
-        SMILES_COL,
-        "Chinese_medicine_group",
-        "Herb.Chinese.name",
-        "CID",
-        "ChemicalName",
-        "MolecularFormula",
-        "MolecularWeight",
-        "Class",
-        "Superclass",
-        "Pathway",
-        "Is_glycoside",
-    ]
-    meta_cols = compact_metadata_cols(compound_master_df, preferred_meta_cols)
-    add_meta_cols = [col for col in meta_cols if col == SMILES_COL or col not in high_toxic_df.columns]
-
-    if len(add_meta_cols) > 1:
-        high_toxic_df = (
-            high_toxic_df
-            .merge(
-                compound_master_df[add_meta_cols].drop_duplicates(subset=[SMILES_COL]),
-                on=SMILES_COL,
-                how="left",
-            )
-            .drop_duplicates()
-            .reset_index(drop=True)
-        )
-
 show_and_save_csv(high_toxic_df, "06_high_toxic_chemicals_master.csv")
 
-print(f"高危肝毒性成分数量：{len(high_toxic_df)}")
+print(f"阳性候选成分数量：{len(high_toxic_df)}")
 
 # %% [markdown]
-# ## 8. 高危成分靶标、通路、GO 和疾病关联分析
+# ## 8. 候选成分靶标、通路、GO 和疾病关联分析
 #
 # 这一部分保留 4 个关系表，因为它们代表不同层级的数据关系，不建议强行合并成一个宽表，否则会因为通路、GO、疾病之间的多对多关系导致结果膨胀和解释混乱。
 
 # %%
 # ============================================================
-# 8.1 高危毒性成分关联靶标
+# 8.1 候选成分关联靶标：保留候选 CID 与来源，不按共享结构扩张集合。
 # ============================================================
-# 逻辑：高危 Smiles -> CID -> ChemicalName -> Symbol
-# 输出：07_high_toxic_chemical_targets.csv
-
-compound_structure_map_df = (
-    data_03
-    .rename(columns={"SMILES": SMILES_COL})
-    [[c for c in ["CID", SMILES_COL] if c in data_03.rename(columns={"SMILES": SMILES_COL}).columns]]
-    .drop_duplicates()
-)
-
-# 这里保留 Herb / ChemicalName / Symbol，方便后续解释“哪个高危成分来自哪味中药、可能作用于哪些靶标”。
-target_df = (
-    high_toxic_df[[SMILES_COL]]
-    .drop_duplicates()
-    .merge(compound_structure_map_df, on=SMILES_COL, how="left")
-    .merge(data_02[["ChemicalName", "CID"]].drop_duplicates(), on="CID", how="left")
-    .merge(data_04[["ChemicalName", "Symbol"]].drop_duplicates(), on="ChemicalName", how="left")
-    .dropna(subset=["Symbol"])
-    .drop_duplicates()
-    .reset_index(drop=True)
-)
-
-# 补充中药来源信息
-if SMILES_COL in high_toxic_df.columns:
-    source_cols = compact_metadata_cols(high_toxic_df, [SMILES_COL, "Chinese_medicine_group", "Herb.Chinese.name"])
-    add_source_cols = [col for col in source_cols if col == SMILES_COL or col not in target_df.columns]
-    if len(add_source_cols) > 1:
-        target_df = (
-            target_df
-            .merge(high_toxic_df[add_source_cols].drop_duplicates(subset=[SMILES_COL]), on=SMILES_COL, how="left")
-            .drop_duplicates()
-            .reset_index(drop=True)
-        )
+target_df = candidate_target_links(high_toxic_df, data_02, data_04)
 
 show_and_save_csv(target_df, "07_high_toxic_chemical_targets.csv")
 
-print(f"高危成分关联靶标数量：{target_df['Symbol'].nunique() if not target_df.empty else 0}")
+print(f"候选成分关联靶标数量：{target_df['Symbol'].nunique() if not target_df.empty else 0}")
 
 # %%
 # ============================================================
@@ -900,31 +792,31 @@ print(f"唯一疾病数量：{disease_df['DiseaseName'].nunique() if 'DiseaseNam
 # ============================================================
 # 9.1 构建统一统计汇总表
 # ============================================================
-# 将高危成分化学类别、靶标、通路、GO、疾病统计结果整合到一个 CSV。
+# 将候选成分化学类别、靶标、通路、GO、疾病统计结果整合到一个 CSV。
 
 count_tables = []
 
-# 1）高危成分化学分类统计
+# 1）候选成分化学分类统计
 count_tables.append(value_counts_table(high_toxic_df, "Class", "High_toxic_chemical_class"))
 count_tables.append(value_counts_table(high_toxic_df, "Superclass", "High_toxic_chemical_superclass"))
 count_tables.append(value_counts_table(high_toxic_df, "Pathway", "High_toxic_chemical_pathway_class"))
 count_tables.append(value_counts_table(high_toxic_df, "Is_glycoside", "High_toxic_glycoside"))
 
-# 2）高危成分来源中药统计
+# 2）候选成分来源中药统计
 count_tables.append(value_counts_table(high_toxic_df, "Herb.Chinese.name", "High_toxic_source_herb"))
 
-# 3）高危成分关联靶标统计
+# 3）候选成分关联靶标统计
 count_tables.append(value_counts_table(target_df, "Symbol", "High_toxic_target"))
 
-# 4）高危靶标通路统计
+# 4）候选关联靶标通路统计
 if pathway_name_col is not None:
     count_tables.append(value_counts_table(pathway_df, pathway_name_col, "High_toxic_target_pathway"))
 
-# 5）高危靶标 GO 统计
+# 5）候选关联靶标 GO 统计
 if go_name_col is not None:
     count_tables.append(value_counts_table(go_df, go_name_col, "High_toxic_target_GO"))
 
-# 6）高危靶标疾病统计
+# 6）候选关联靶标疾病统计
 count_tables.append(value_counts_table(disease_df, "DiseaseName", "High_toxic_target_disease"))
 
 # 合并所有非空统计表
