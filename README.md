@@ -6,30 +6,27 @@
 
 TCM-LiverTox 是一个面向方剂、单味中药和中药来源化学成分的本地肝毒性预测与知识关联分析平台。系统由单页 Web 前端、FastAPI 后端、预测脚本、机器学习模型、本地数据资源和任务缓存模块组成。
 
-## 软件介绍 / Software overview
+## 软件介绍
 
-点击图片可查看大图。Click an image to view it at full resolution.
+点击图片可查看大图。
 
-### Figure 13. 软件首页与数据库总览 / Homepage and database overview
+### 1. 软件首页与数据库总览
 
 展示平台入口、检索功能、数据库概览及统计图表。
-The homepage presents search tools, a database overview and summary statistics.
 
-[![Figure 13. 软件首页与数据库总览 / Homepage and database overview](docs/images/figure-13.png)](docs/images/figure-13.png)
+[![1. 软件首页与数据库总览](docs/images/figure-13.png)](docs/images/figure-13.png)
 
-### Figure 14. 知识关联检索与来源追溯 / Knowledge associations and source tracing
+### 2. 知识关联检索与来源追溯
 
 展示方剂与中药的关联网络、来源追溯表及结果导出入口。
-This view presents formula–herb associations, source-tracing tables and result export options.
 
-[![Figure 14. 知识关联检索与来源追溯 / Knowledge associations and source tracing](docs/images/figure-14.png)](docs/images/figure-14.png)
+[![2. 知识关联检索与来源追溯](docs/images/figure-14.png)](docs/images/figure-14.png)
 
-### Figure 15. 肝毒性预测与筛查摘要 / Hepatotoxicity prediction and screening summary
+### 3. 肝毒性预测与筛查摘要
 
 展示三端点预测、模型概率图、筛查摘要及结果导出功能。
-This view presents predictions across three endpoints, model probability charts, a screening summary and export options.
 
-[![Figure 15. 肝毒性预测与筛查摘要 / Hepatotoxicity prediction and screening summary](docs/images/figure-15.png)](docs/images/figure-15.png)
+[![3. 肝毒性预测与筛查摘要](docs/images/figure-15.png)](docs/images/figure-15.png)
 
 ## 重要声明
 
